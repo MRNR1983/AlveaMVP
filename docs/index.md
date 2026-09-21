@@ -9,6 +9,7 @@ programación semanal de personal para 50 tiendas, cumpliendo la reforma de
 40 horas (DOF 01-05-2026), con ahorro cuantificado en MXN frente al escenario
 actual.
 
+**App funcional (en vivo):** [alveamvp.streamlit.app](https://alveamvp.streamlit.app/)
 **Repo (código completo):** [github.com/MRNR1983/AlveaMVP](https://github.com/MRNR1983/AlveaMVP)
 
 ## Empieza aquí
