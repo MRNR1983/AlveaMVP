@@ -36,16 +36,28 @@ TIEMPO_LIMITE_SEG_DEFAULT = 10.0
 # Carga y cálculo (cacheados)
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner="Generando dataset sintético (primera vez)...")
-def cargar_datos() -> dict[str, pd.DataFrame]:
-    archivos = ["tiendas", "trafico", "ventas", "plantilla", "ausentismo"]
-    if all((DATA_DIR / f"{n}.csv").exists() for n in archivos):
+ARCHIVOS_DATASET = ["tiendas", "trafico", "ventas", "plantilla", "ausentismo"]
+COLUMNAS_CON_FECHA = {"trafico", "ventas", "ausentismo"}
+
+
+@st.cache_data(show_spinner="Generando dataset de ejemplo (primera vez)...")
+def cargar_datos_ejemplo() -> dict[str, pd.DataFrame]:
+    """Dataset sintético (marca ficticia) que se usa mientras no se sube nada propio."""
+    if all((DATA_DIR / f"{n}.csv").exists() for n in ARCHIVOS_DATASET):
         return {n: pd.read_csv(DATA_DIR / f"{n}.csv", parse_dates=["fecha"] if n in
-                                ("trafico", "ventas", "ausentismo") else None)
-                for n in archivos}
+                                COLUMNAS_CON_FECHA else None)
+                for n in ARCHIVOS_DATASET}
     return datos_sinteticos.generar_dataset_completo(
         FECHA_INICIO_DEFAULT, FECHA_INICIO_DEFAULT + pd.Timedelta(days=6), seed=42, out_dir=DATA_DIR,
     )
+
+
+def cargar_datos() -> dict[str, pd.DataFrame]:
+    """Usa los archivos que el usuario haya subido en 'Cargar datos'; si falta
+    alguno, completa con el dataset de ejemplo (nunca se detiene la app)."""
+    subidos = st.session_state.get("datos_subidos", {})
+    ejemplo = cargar_datos_ejemplo()
+    return {n: subidos.get(n, ejemplo[n]) for n in ARCHIVOS_DATASET}
 
 
 def _normalizar_fechas(df: pd.DataFrame) -> pd.DataFrame:
@@ -119,8 +131,13 @@ datos = cargar_datos()
 tiendas_df = datos["tiendas"]
 
 st.sidebar.title("Jornada40 — Autoservicio MX")
-paginas_negocio = ["Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
-pagina = st.sidebar.radio("Ir a", paginas_negocio)
+paginas_negocio = ["Cargar datos", "Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+usando_datos_propios = bool(st.session_state.get("datos_subidos"))
+etiqueta_datos = "🟢 Cargar datos (usando tus archivos)" if usando_datos_propios else "🔵 Cargar datos (usando datos de ejemplo)"
+pagina = st.sidebar.radio(
+    "Ir a", paginas_negocio,
+    format_func=lambda p: etiqueta_datos if p == "Cargar datos" else p,
+)
 anio = st.sidebar.selectbox("Año (régimen legal)", [2026, 2027, 2028, 2029, 2030], index=1)
 
 st.sidebar.divider()
@@ -135,7 +152,67 @@ if modo_avanzado:
         st.cache_data.clear()
         st.rerun()
 
-if pagina == "Vista Red":
+if pagina == "Cargar datos":
+    st.header("Cargar datos de tu tienda")
+    st.write(
+        "Sube tus propios archivos para calcular con datos reales. Si no subes nada, "
+        "la herramienta usa un ejemplo con datos sintéticos (marca ficticia) para que "
+        "puedas explorarla de inmediato."
+    )
+
+    ejemplo = cargar_datos_ejemplo()
+    etiquetas = {
+        "tiendas": "Catálogo de tiendas",
+        "trafico": "Tráfico de clientes (por hora)",
+        "ventas": "Ventas históricas (por hora)",
+        "plantilla": "Plantilla actual (empleados)",
+        "ausentismo": "Ausentismo (por empleado y día)",
+    }
+
+    st.subheader("1. Descarga la plantilla (formato esperado)")
+    cols_plantillas = st.columns(len(ARCHIVOS_DATASET))
+    for col, nombre in zip(cols_plantillas, ARCHIVOS_DATASET):
+        col.download_button(
+            f"⬇️ {etiquetas[nombre]}",
+            data=ejemplo[nombre].to_csv(index=False).encode("utf-8"),
+            file_name=f"{nombre}_ejemplo.csv",
+            mime="text/csv",
+            help=f"Columnas: {', '.join(ejemplo[nombre].columns)}",
+            width='stretch',
+        )
+
+    st.subheader("2. Sube tus archivos (CSV, mismo formato que la plantilla)")
+    subidos_ahora: dict[str, pd.DataFrame] = {}
+    cols_uploaders = st.columns(len(ARCHIVOS_DATASET))
+    for col, nombre in zip(cols_uploaders, ARCHIVOS_DATASET):
+        archivo = col.file_uploader(etiquetas[nombre], type=["csv"], key=f"upload_{nombre}")
+        if archivo is not None:
+            try:
+                df = pd.read_csv(archivo, parse_dates=["fecha"] if nombre in COLUMNAS_CON_FECHA else None)
+                subidos_ahora[nombre] = df
+                col.success(f"{len(df)} filas cargadas")
+            except Exception as e:
+                col.error(f"No se pudo leer: {e}")
+
+    c1, c2 = st.columns(2)
+    if c1.button("Usar estos archivos", type="primary", disabled=not subidos_ahora):
+        st.session_state.setdefault("datos_subidos", {}).update(subidos_ahora)
+        st.cache_data.clear()
+        st.success("Listo. La herramienta ya está usando tus datos.")
+        st.rerun()
+    if usando_datos_propios and c2.button("Volver a datos de ejemplo"):
+        st.session_state["datos_subidos"] = {}
+        st.cache_data.clear()
+        st.rerun()
+
+    if usando_datos_propios:
+        st.info("Archivos propios en uso: " + ", ".join(
+            etiquetas[n] for n in st.session_state["datos_subidos"]
+        ))
+    else:
+        st.info("Usando datos de ejemplo (marca ficticia, 100% sintéticos).")
+
+elif pagina == "Vista Red":
     st.header("Vista Red — consolidado de las 50 tiendas")
     n_tiendas = len(tiendas_df)
     if modo_avanzado:
@@ -169,6 +246,13 @@ if pagina == "Vista Red":
         st.bar_chart(filtrado.set_index("tienda_id")["ahorro_pct"])
         st.dataframe(filtrado, width='stretch')
 
+        st.download_button(
+            "⬇️ Descargar ranking de tiendas (CSV)",
+            data=filtrado.to_csv(index=False).encode("utf-8"),
+            file_name="ranking_ahorro_tiendas.csv",
+            mime="text/csv",
+        )
+
 elif pagina == "Vista Tienda":
     st.header("Vista Tienda")
     tienda_id = st.selectbox("Tienda", tiendas_df["tienda_id"])
@@ -195,6 +279,25 @@ elif pagina == "Vista Tienda":
 
         st.write("**Horario propuesto (primeras filas)**")
         st.dataframe(reporte["propuesta"]["horario_df"].head(50), width='stretch')
+
+        dl1, dl2 = st.columns(2)
+        dl1.download_button(
+            "⬇️ Descargar horario completo (CSV)",
+            data=reporte["propuesta"]["horario_df"].to_csv(index=False).encode("utf-8"),
+            file_name=f"horario_{tienda_id}.csv", mime="text/csv",
+        )
+        resumen_cfo = (
+            f"Tienda: {tienda_id}\n{reporte['resumen_ejecutivo']}\n\n"
+            f"Costo base (MXN/semana): {reporte['ahorro_semanal']['costo_base_mxn']:,.0f}\n"
+            f"Costo propuesta (MXN/semana): {reporte['ahorro_semanal']['costo_propuesta_mxn']:,.0f}\n"
+            f"Ahorro: {reporte['ahorro_semanal']['ahorro_pct']:.1%}\n"
+            f"% del techo capturado: {brecha.get('pct_del_techo_capturado', 0):.1%}\n"
+        )
+        dl2.download_button(
+            "⬇️ Descargar reporte CFO (TXT)",
+            data=resumen_cfo.encode("utf-8"),
+            file_name=f"reporte_cfo_{tienda_id}.txt", mime="text/plain",
+        )
 
         if modo_avanzado:
             st.write("**Tabla de trazabilidad de reglas (detalle técnico)**")
