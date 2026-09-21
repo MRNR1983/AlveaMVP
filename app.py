@@ -119,18 +119,29 @@ datos = cargar_datos()
 tiendas_df = datos["tiendas"]
 
 st.sidebar.title("Jornada40 — Autoservicio MX")
-pagina = st.sidebar.radio("Ir a", ["Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas",
-                                    "Configuración de reglas", "Guion de demo"])
+paginas_negocio = ["Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+pagina = st.sidebar.radio("Ir a", paginas_negocio)
 anio = st.sidebar.selectbox("Año (régimen legal)", [2026, 2027, 2028, 2029, 2030], index=1)
-if st.sidebar.button("Recalcular todo (limpia caché)"):
-    st.cache_data.clear()
-    st.rerun()
+
+st.sidebar.divider()
+modo_avanzado = st.sidebar.toggle("Modo avanzado", value=False)
+if modo_avanzado:
+    pagina_tecnica = st.sidebar.selectbox(
+        "Página interna", ["(ninguna)", "Configuración de reglas", "Guion de demo"]
+    )
+    if pagina_tecnica != "(ninguna)":
+        pagina = pagina_tecnica
+    if st.sidebar.button("Recalcular con datos actuales"):
+        st.cache_data.clear()
+        st.rerun()
 
 if pagina == "Vista Red":
     st.header("Vista Red — consolidado de las 50 tiendas")
-    n_tiendas = st.slider("Tiendas a calcular (baja este número para pruebas rápidas; usa 50 en la demo real)",
-                           1, len(tiendas_df), min(5, len(tiendas_df)))
-    if st.button("Calcular red"):
+    n_tiendas = len(tiendas_df)
+    if modo_avanzado:
+        n_tiendas = st.slider("Tiendas a calcular (modo avanzado: reduce para pruebas rápidas)",
+                               1, len(tiendas_df), min(5, len(tiendas_df)))
+    if st.button("Calcular ahorro de la red", type="primary"):
         ids = list(tiendas_df["tienda_id"].head(n_tiendas))
         resultados = calcular_red(ids, anio, TIEMPO_LIMITE_SEG_DEFAULT, datos)
         consolidado = vista_red.consolidar_resultados(resultados, tiendas_df)
@@ -176,25 +187,40 @@ elif pagina == "Vista Tienda":
         c2.metric("Costo propuesta (MXN)", f"${reporte['ahorro_semanal']['costo_propuesta_mxn']:,.0f}")
         c3.metric("Ahorro", f"{reporte['ahorro_semanal']['ahorro_pct']:.1%}")
 
-        st.write("**Brecha contra el techo teórico**")
-        st.json(reporte["brecha_vs_techo"])
-
-        st.write("**Tabla de trazabilidad de reglas**")
-        st.dataframe(reporte["tabla_trazabilidad"], width='stretch')
+        brecha = reporte["brecha_vs_techo"]
+        st.write("**Qué tan cerca está del máximo teórico posible**")
+        bc1, bc2 = st.columns(2)
+        bc1.metric("% del techo capturado", f"{brecha.get('pct_del_techo_capturado', 0):.1%}")
+        bc2.metric("Brecha vs. techo (MXN/semana)", f"${brecha.get('brecha_mxn', 0):,.0f}")
 
         st.write("**Horario propuesto (primeras filas)**")
         st.dataframe(reporte["propuesta"]["horario_df"].head(50), width='stretch')
 
+        if modo_avanzado:
+            st.write("**Tabla de trazabilidad de reglas (detalle técnico)**")
+            st.dataframe(reporte["tabla_trazabilidad"], width='stretch')
+
 elif pagina == "Simulacros":
     st.header("Simulacros")
     tienda_id = st.selectbox("Tienda a simular", tiendas_df["tienda_id"])
-    col1, col2 = st.columns(2)
-    mult_trafico = col1.slider("Multiplicador de tráfico", 0.5, 2.0, 1.0, 0.05)
-    delta_plantilla = col2.number_input("Delta de plantilla (personas)", -20, 20, 0)
-    tasa_ausentismo = col1.slider("Tasa de ausentismo", 0.0, 0.30, 0.06, 0.01)
-    anio_regimen = col2.selectbox("Año de régimen (simulacro)", [None, 2026, 2027, 2028, 2029, 2030])
 
-    if st.button("Correr simulacro"):
+    escenarios_trafico = {
+        "Normal": 1.0, "Alta demanda (+15%, ej. Buen Fin)": 1.15,
+        "Temporada alta (+30%)": 1.30, "Temporada baja (-20%)": 0.80,
+    }
+    col1, col2 = st.columns(2)
+    escenario_sel = col1.selectbox("Escenario de tráfico", list(escenarios_trafico))
+    mult_trafico = escenarios_trafico[escenario_sel]
+    delta_plantilla = col2.number_input("Cambio en plantilla (personas, +/-)", -20, 20, 0)
+
+    if modo_avanzado:
+        tasa_ausentismo = col1.slider("Tasa de ausentismo", 0.0, 0.30, 0.06, 0.01)
+        anio_regimen = col2.selectbox("Año de régimen (simulacro)", [None, 2026, 2027, 2028, 2029, 2030])
+    else:
+        tasa_ausentismo = 0.06
+        anio_regimen = None
+
+    if st.button("Correr simulacro", type="primary"):
         palancas = simulacros.Palancas(
             multiplicador_trafico=mult_trafico, delta_plantilla=int(delta_plantilla),
             tasa_ausentismo=tasa_ausentismo, anio_regimen=anio_regimen,
