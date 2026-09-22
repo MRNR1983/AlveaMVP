@@ -20,13 +20,14 @@ Dependencias:
 """
 from __future__ import annotations
 
-from datetime import date
+import calendar as _calendar_mod
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from jornada40 import reglas  # noqa: F401  convenciones compartidas del dominio
+from jornada40 import reglas
 
 __all__ = [
     "CONFIG",
@@ -65,16 +66,29 @@ CONFIG: dict = {
         "pico_tarde_hora": 19.0,   # segundo pico 18-20 h
         "pico_tarde_amp": 0.85,
         "ancho_gaussiana": 2.5,    # horas, dispersión de cada campana
-        "fin_semana_rango": [1.30, 1.50],  # sáb/dom con +30-50 %
-        "quincena_dias": [1, 15],          # días de quincena
-        "quincena_ventana": 2,             # ±2 días alrededor
-        "quincena_rango": [1.20, 1.35],    # +20-35 %
-        "buen_fin_rango": [1.50, 1.80],    # tercer viernes de nov + su fin de semana
-        "navidad_dias": [1, 24],           # 1-24 dic con multiplicador creciente
-        "navidad_incremento_max": 0.40,    # hasta +40 % el 24 de dic
+        "fin_semana_rango": [1.50, 1.50],  # sáb/dom +50 % FIJO — decisión de producto: sin rango aleatorio, va al techo del rango original para reflejar el máximo beneficio defendible
+        # Quincena: reemplaza el viejo esquema de "días fijos ± ventana" por un
+        # calendario real de días de pago (15 y último día de cada mes, que varía
+        # 28/29/30/31). Reglas (decisión de producto, 21-sep-2026, ver notas):
+        #  1) Pago entre semana (mar-jue): pico ese mismo día.
+        #  2) Pago cae vie/sáb/dom/festivo: LFT obliga a pagar en día hábil, se
+        #     adelanta al viernes hábil anterior (fuente: comparabien.com.mx y
+        #     cronista.com, LFT "salario debe pagarse en día laborable"); ese
+        #     viernes SÍ se traslapa con el fin de semana (vie+sáb+dom marcados).
+        #  3) Pago cae lunes: pico solo el lunes, SIN arrastrar el fin de semana
+        #     previo (no se traslapan).
+        #  4) Periodo largo entre pagos (>15 días, ej. fin de dic a 15 de ene):
+        #     el incremento se diluye proporcional al largo del periodo, en vez
+        #     de mantenerse fijo (el dinero "rinde menos" estirado).
+        #  5) Fin de mes usa el día real del mes (28/29/30/31), no un número fijo.
+        "quincena_incremento_base": 0.35,  # +35 % FIJO en un periodo normal de 15 días. SIN FUENTE PÚBLICA — patrón ampliamente reconocido en México (efecto quincena en autoservicio) pero no se encontró una cifra publicada; queda como supuesto declarado hasta que el cliente suba su tráfico real (ver README).
+        "quincena_periodo_normal_dias": 15,  # periodo de referencia para diluir (regla 4)
+        "buen_fin_rango": [1.30, 1.30],    # tercer viernes de nov + su fin de semana, +30% FIJO. FUENTE: Cámara de Comercio de Guadalajara reportó +34% en Buen Fin 2025 y MiPymes hasta +55%, pero esas cifras son de retail general (electrónica, departamental); en autoservicio/súper el impacto es menor porque el Buen Fin no mueve tanto la canasta básica. +30% es una lectura conservadora de esa evidencia, ajustada a la baja a propósito para el sector. Fuentes: elinformador.mx (Buen Fin 2025, Guadalajara) y Yahoo Noticias (MiPymes).
+        "navidad_dias": [1, 24],           # 1-24 dic con multiplicador creciente. SIMPLIFICACIÓN: el 25-31 dic no está modelado con factor elevado (vuelve a 1.0); en la realidad sigue habiendo tráfico post-navideño, queda documentado como pendiente de Fase 2.
+        "navidad_incremento_max": 0.60,    # hasta +60 % el 24 de dic. FUENTE: NielsenIQ vía retailers.mx — "autoservicios registrarán un crecimiento del 60%" en la semana del 24 de diciembre; es el número con más respaldo de todo el calendario porque la fuente habla específicamente de autoservicio, no de retail general.
         "regreso_clases_dias": 10,         # últimos 10 días de agosto
         "regreso_clases_mult": 1.20,       # +20 %
-        "ruido_std": 0.10,                 # ruido ±10 % normal truncado en 0
+        "ruido_std": 0.10,                 # ruido ±10 % normal truncado en 0. Probado 21-sep-2026: sin ruido, ~33% de las horas quedan empatadas y se marcan como "pico" (fuera del 10-30% esperado); con 10% vuelve a un ~20-30% razonable. El ruido no mueve el ahorro promedio reportado (media del multiplicador = 0.9999), solo desempata horas para que la clasificación de picos tenga sentido.
     },
     "ventas": {
         "conversion_rango": [0.70, 0.85],  # SUPUESTO: cliente->ticket 70-85 %
@@ -82,7 +96,7 @@ CONFIG: dict = {
             "chico": 120.0, "mediano": 160.0, "grande": 220.0,
         },
         "ticket_jitter": 0.10,             # variación ±10 % por tienda
-        "monto_ruido_std": 0.05,           # ruido ±5 % por hora/tienda
+        "monto_ruido_std": 0.05,           # ruido ±5 % por hora/tienda. Misma razón que trafico.ruido_std (ver nota ahí).
     },
     "plantilla": {
         "roles": {  # SUPUESTO: distribución fija que suma 80 FTE (reto)
@@ -155,14 +169,70 @@ def _curva_intradia(horas: np.ndarray, cfg: dict) -> np.ndarray:
     return manana + tarde
 
 
-def _fechas_quincena(fechas: pd.DatetimeIndex, cfg: dict) -> set[date]:
-    """Conjunto de fechas afectadas por quincena (días 1 y 15 ± ventana)."""
-    dias: set[date] = set()
-    for f in fechas:
-        for d in cfg["quincena_dias"]:
-            for delta in range(-cfg["quincena_ventana"], cfg["quincena_ventana"] + 1):
-                dias.add((f + pd.Timedelta(days=d - (f.day - d))).date())
-    return dias
+def _fecha_efectiva_pago(fecha_teorica: date, festivos: set[date]) -> date:
+    """Adelanta el pago al último día hábil (lun-vie, no festivo) si la fecha
+    teórica cae sábado, domingo o festivo oficial.
+
+    FUENTE: la LFT exige que el salario se pague en día laborable; la práctica
+    estándar es adelantar el pago al viernes hábil anterior (comparabien.com.mx,
+    cronista.com — ver notas de CONFIG["trafico"]).
+    """
+    f = fecha_teorica
+    while f.weekday() >= 5 or f in festivos:
+        f = f - timedelta(days=1)
+    return f
+
+
+def _dias_pago_teoricos(anio: int, mes: int) -> list[date]:
+    """Días de pago teóricos de un mes: 15 y último día real del mes
+    (28/29/30/31 según corresponda — regla 5, no se asume 30 fijo)."""
+    ultimo_dia = _calendar_mod.monthrange(anio, mes)[1]
+    return [date(anio, mes, 15), date(anio, mes, ultimo_dia)]
+
+
+def _calendario_quincenas(fechas: pd.DatetimeIndex, cfg: dict) -> dict[date, float]:
+    """Calendario de factores de quincena por fecha, aplicando las 5 reglas
+    de negocio documentadas en CONFIG["trafico"] (pago LFT en día hábil,
+    traslape con fin de semana solo si el pago cae viernes, dilución si el
+    periodo entre pagos es más largo de lo normal).
+
+    Devuelve {fecha: factor_multiplicativo}; las fechas no afectadas
+    simplemente no aparecen (se asume 1.0).
+    """
+    base = cfg["quincena_incremento_base"]
+    periodo_normal = cfg["quincena_periodo_normal_dias"]
+
+    anio_min, anio_max = fechas.min().year, fechas.max().year
+    festivos: set[date] = set()
+    for anio in range(anio_min - 1, anio_max + 2):
+        festivos |= set(reglas.dias_descanso_obligatorio(anio))
+
+    # Días de pago teóricos con un mes de margen a cada lado del rango, para
+    # calcular bien el "gap" (regla 4) en los bordes del periodo solicitado.
+    teoricos: list[date] = []
+    for anio in range(anio_min - 1, anio_max + 2):
+        for mes in range(1, 13):
+            teoricos.extend(_dias_pago_teoricos(anio, mes))
+    teoricos.sort()
+
+    efectivos = [_fecha_efectiva_pago(t, festivos) for t in teoricos]
+
+    factor_por_fecha: dict[date, float] = {}
+    for i, efectiva in enumerate(efectivos):
+        gap = (efectiva - efectivos[i - 1]).days if i > 0 else periodo_normal
+        incremento = base if gap <= periodo_normal else base * (periodo_normal / gap)
+        factor = 1.0 + incremento
+
+        if efectiva.weekday() == 4:  # viernes: se traslapa con el fin de semana
+            afectadas = [efectiva, efectiva + timedelta(days=1), efectiva + timedelta(days=2)]
+        else:  # entre semana (incluye lunes) o cualquier otro caso: día aislado
+            afectadas = [efectiva]
+
+        for d in afectadas:
+            if fechas.min().date() <= d <= fechas.max().date():
+                factor_por_fecha[d] = max(factor_por_fecha.get(d, 1.0), factor)
+
+    return factor_por_fecha
 
 
 def _es_fin_semana(fechas: pd.DatetimeIndex) -> np.ndarray:
@@ -207,11 +277,16 @@ def generar_trafico(
 ) -> pd.DataFrame:
     """Genera tráfico horario de clientes (sintético, reproducible).
 
-    Modela: campana intradía de doble pico, +30-50 % en fin de semana,
-    +20-35 % en quincena (días 1 y 15 ±2), Buen Fin, Navidad (1-24 dic
-    creciente) y regreso a clases (últimos 10 días de agosto). Ruido ±10 %
-    normal truncado en 0 por hora/tienda. Fuera del horario de atención o de
-    la ventana de slots 06:00-23:00 (jornada40/reglas.py) el tráfico es 0.
+    Modela: campana intradía de doble pico, +50 % fijo en fin de semana,
+    quincena con calendario real de días de pago (15 y último día del mes,
+    ajustado a día hábil LFT si cae fin de semana/festivo, con traslape de
+    fin de semana solo si el pago cae viernes, y dilución si el periodo entre
+    pagos es largo — ver _calendario_quincenas), Buen Fin (+30 %), Navidad
+    (creciente hasta +60 % el 24 dic) y regreso a clases (últimos 10 días de
+    agosto, +20 %). Ruido ±10 % normal truncado en 0 por hora/tienda (no
+    mueve el promedio, solo desempata horas para la clasificación de picos).
+    Fuera del horario de atención o de la ventana de slots 06:00-23:00
+    (jornada40/reglas.py) el tráfico es 0.
     """
     cfg = CONFIG["trafico"]
     rng = _rng(seed)
@@ -229,9 +304,14 @@ def generar_trafico(
 
     n_d = len(fechas)
     es_finde = _es_fin_semana(fechas)
-    es_quincena = np.array([f.date() in _fechas_quincena(fechas, cfg) for f in fechas])
+    # Calendario real de quincena (15 + ultimo dia del mes, ajustado a dia
+    # habil LFT, con traslape de fin de semana solo si el pago cae viernes,
+    # y dilucion si el periodo entre pagos es largo). Se calcula una sola vez
+    # (no por fecha) para evitar el bug de rendimiento O(n_fechas^2) que tenia
+    # el esquema anterior.
+    _factor_quincena_map = _calendario_quincenas(fechas, cfg)
+    f_quincena = np.array([_factor_quincena_map.get(f.date(), 1.0) for f in fechas])
     es_bf = _es_buen_fin(fechas)
-    f_quincena = np.where(es_quincena, rng.uniform(*cfg["quincena_rango"], size=n_d), 1.0)
     f_navidad = _factor_navidad(fechas, cfg)
     f_regreso = _factor_regreso_clases(fechas, cfg)
 

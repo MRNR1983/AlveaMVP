@@ -31,6 +31,7 @@ __all__ = [
     "calcular_brecha_vs_techo",
     "armar_tabla_trazabilidad",
     "generar_reporte_cfo",
+    "calificar_edicion_manual",
 ]
 
 # Multiplicador con el que se penaliza la subdotación NUEVA que la
@@ -261,4 +262,127 @@ def generar_reporte_cfo(
         "ahorro_semanal": ahorro,
         "brecha_vs_techo": brecha,
         "tabla_trazabilidad": tabla,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Calificacion de ediciones manuales (chips: renombrar/intercambiar/borrar)
+# ---------------------------------------------------------------------------
+# Decision de producto (21-sep-2026): el gerente puede editar el horario
+# sugerido SOLO renombrando (reasignar empleado) o intercambiando dos turnos.
+# Como el CP-SAT ya encontro el costo minimo posible respetando la ley, CUALQUIER
+# edicion manual solo puede alejarte de ese optimo (mismo costo o mas, misma
+# cobertura o menos) -- la calificacion es literalmente "que tan lejos te
+# moviste", no un modelo nuevo.
+
+def calificar_edicion_manual(
+    horario_original_df: pd.DataFrame,
+    horario_editado_df: pd.DataFrame,
+    plantilla_tienda_df: pd.DataFrame,
+    demanda_tienda_df: pd.DataFrame,
+    anio: int,
+) -> dict:
+    """Compara un horario editado a mano contra el horario optimo original.
+
+    Devuelve costo extra en MXN, horas de cobertura pico perdidas (nuevas,
+    que el optimo no tenia), el detalle de que empleados cambiaron de
+    franja (ordinaria/doble/triple) y una calificacion +/- con mensaje para
+    mostrar en la UI antes de que el gerente confirme el cambio.
+
+    El castigo es exponencial en el sentido de que ir de ordinaria a doble
+    cuesta 2x esa hora, e ir a triple cuesta 3x -- no es un factor adicional
+    inventado, es el mismo multiplicador legal que ya usa el optimizador
+    (art. 66/68 LFT), simplemente se hace visible por empleado.
+    """
+    fref = date(anio, 1, 1)
+    tope_semanal = float(reglas.regla_vigente("jornada_ordinaria_semanal_horas", fref))
+    tope_doble = float(reglas.regla_vigente("extra_tope_doble_semanal_horas", fref))
+    tope_triple = float(reglas.regla_vigente("extra_tope_triple_semanal_horas", fref))
+    mult_doble = float(reglas.regla_vigente("pago_extra_doble_multiplicador", fref))
+    mult_triple = float(reglas.regla_vigente("pago_extra_triple_multiplicador", fref))
+
+    valor_hora = {
+        emp.empleado_id: emp.salario_diario_mxn / (tope_semanal / 6)
+        for emp in plantilla_tienda_df.itertuples(index=False)
+    }
+
+    def _costo_y_desglose(horario_df: pd.DataFrame) -> tuple[float, dict[str, dict]]:
+        if horario_df.empty:
+            return 0.0, {}
+        horas_semana = (horario_df[horario_df["trabajando"]]
+                         .groupby("empleado_id").size().to_dict())
+        costo_total = 0.0
+        desglose: dict[str, dict] = {}
+        for emp_id, horas in horas_semana.items():
+            vh = valor_hora.get(emp_id, 0.0)
+            ordinaria = min(horas, tope_semanal)
+            resto = max(0.0, horas - tope_semanal)
+            doble = min(resto, tope_doble)
+            triple = min(max(0.0, resto - tope_doble), tope_triple)
+            costo = ordinaria * vh + doble * vh * mult_doble + triple * vh * mult_triple
+            costo_total += costo
+            desglose[emp_id] = {"horas": horas, "ordinaria": ordinaria,
+                                 "doble": doble, "triple": triple, "costo_mxn": costo}
+        return costo_total, desglose
+
+    def _deficit_pico(horario_df: pd.DataFrame) -> int:
+        if horario_df.empty or "es_pico" not in demanda_tienda_df.columns:
+            return 0
+        cobertura = (horario_df[horario_df["trabajando"]]
+                     .groupby(["fecha", "hora"]).size())
+        pico = demanda_tienda_df[demanda_tienda_df["es_pico"]]
+        requerido = pico.groupby(["fecha", "hora"])["personas_requeridas"].sum()
+        deficit = 0
+        for (f, h), req in requerido.items():
+            cubierto = cobertura.get((f, h), 0)
+            deficit += max(0, int(req) - int(cubierto))
+        return deficit
+
+    costo_original, desglose_original = _costo_y_desglose(horario_original_df)
+    costo_editado, desglose_editado = _costo_y_desglose(horario_editado_df)
+    deficit_original = _deficit_pico(horario_original_df)
+    deficit_editado = _deficit_pico(horario_editado_df)
+
+    delta_costo = round(costo_editado - costo_original, 2)
+    delta_deficit = deficit_editado - deficit_original
+
+    cambios_empleado = []
+    for emp_id in set(desglose_original) | set(desglose_editado):
+        o = desglose_original.get(emp_id, {"ordinaria": 0.0, "doble": 0.0, "triple": 0.0, "costo_mxn": 0.0})
+        e = desglose_editado.get(emp_id, {"ordinaria": 0.0, "doble": 0.0, "triple": 0.0, "costo_mxn": 0.0})
+        delta_emp = round(e["costo_mxn"] - o["costo_mxn"], 2)
+        if abs(delta_emp) > 0.01 or o.get("triple", 0) != e.get("triple", 0):
+            cambios_empleado.append({
+                "empleado_id": emp_id,
+                "horas_antes": o.get("horas", 0), "horas_despues": e.get("horas", 0),
+                "entro_a_triple": e.get("triple", 0) > o.get("triple", 0),
+                "delta_costo_mxn": delta_emp,
+            })
+    cambios_empleado.sort(key=lambda c: c["delta_costo_mxn"], reverse=True)
+
+    if delta_deficit > 0:
+        calificacion, score = "No recomendado", -100
+        mensaje = (f"Este cambio deja {delta_deficit}h de hora pico sin cubrir que el "
+                   f"horario sugerido sí cubría. No se recomienda confirmarlo así.")
+    elif delta_costo <= 0 and delta_deficit <= 0:
+        calificacion, score = "Neutral", 0
+        mensaje = "Este cambio no mueve el costo ni la cobertura respecto a la sugerencia."
+    elif any(c["entro_a_triple"] for c in cambios_empleado):
+        calificacion, score = "Costoso", -80
+        mensaje = (f"Este cambio agrega ${delta_costo:,.0f} MXN/semana porque empuja a alguien "
+                   f"a horas extra TRIPLES (3x). Revisa si de verdad es necesario.")
+    elif delta_costo > 0:
+        score = max(-60, round(-delta_costo / 50))
+        calificacion = "Aceptable" if delta_costo < 500 else "Caro"
+        mensaje = f"Este cambio agrega ${delta_costo:,.0f} MXN/semana frente a la sugerencia óptima."
+    else:
+        calificacion, score, mensaje = "Neutral", 0, "Sin cambio relevante."
+
+    return {
+        "delta_costo_mxn": delta_costo,
+        "delta_horas_deficit_pico": delta_deficit,
+        "calificacion": calificacion,
+        "score": score,
+        "mensaje": mensaje,
+        "cambios_por_empleado": cambios_empleado,
     }

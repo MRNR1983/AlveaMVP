@@ -68,3 +68,46 @@ conjunto completo de módulos, incluyendo los casos de esquina descritos
 en el diseño original (fechas de festivos, topes de jornada por año,
 cuadre exacto del desglose diario contra el semanal, techo <= operativo,
 préstamos que nunca dejan a la tienda origen en déficit propio).
+
+## Sesión 21-sep-2026: calendario real de quincena, calificación de ediciones, autenticación por rol
+Construido por Claude, con las decisiones de negocio confirmadas por Mauricio en la conversación:
+
+- **`jornada40/datos_sinteticos.py`**: se quitó el esquema de quincena por
+  "días fijos ± ventana" y se reemplazó por un calendario real (`_calendario_quincenas`):
+  paga el 15 y el último día real del mes (28/29/30/31, no fijo en 30);
+  si cae sábado/domingo/festivo se adelanta al viernes hábil anterior
+  (fuente: LFT, vía comparabien.com.mx y cronista.com — el salario debe
+  pagarse en día laborable); si cae viernes se traslapa con el fin de
+  semana, si cae lunes NO se traslapa con el fin de semana previo; se
+  diluye el incremento si el periodo entre pagos es más largo de 15 días.
+  Multiplicadores de Buen Fin (+30%) y Navidad (+60% el 24-dic) ajustados
+  con fuentes reales (NielsenIQ vía retailers.mx, Cámara de Comercio de
+  Guadalajara) en vez de supuestos sin respaldo — quincena queda como
+  supuesto declarado sin fuente pública. Se corrigió de paso un bug de
+  rendimiento real preexistente (O(n_fechas²) en el cálculo de quincena)
+  que causaba timeout al generar varios años de una tienda.
+- **`jornada40/costos_ahorro.calificar_edicion_manual`**: compara un
+  horario editado a mano (renombrar/intercambiar/borrar un turno) contra
+  el óptimo del CP-SAT — costo extra en MXN, déficit de cobertura pico
+  nuevo, y castigo cuando la edición empuja a alguien a horas extra
+  triples. Como el optimizador ya encontró el costo mínimo legal, por
+  construcción cualquier edición manual sólo puede alejarse de ese óptimo.
+- **`jornada40/usuarios.py` + login en `app.py`**: autenticación
+  simplificada (documentada como tal, no apta para producción) con 3
+  roles — Gerente de tienda (solo su tienda, sin Vista Red), Admin/HQ
+  (las 50 tiendas + gestión de usuarios), Super Admin (todo, más un
+  selector "Ver como" para simular cualquier perfil sin re-loguearse).
+  Cada tienda tiene 3 cuentas genéricas (U1/U2/U3, activables/desactivables
+  desde HQ) para capturar horas de personal cuya alta individual aún no
+  se completa, en vez de perderlas. Contraseñas de demo documentadas como
+  brecha de seguridad conocida y aceptada para el PMV (con fallback a
+  `st.secrets` si se configuran en Streamlit Cloud).
+
+## Revisión de código antes de desplegar (21-sep-2026)
+Auditoría propia antes de subir a producción, pedida explícitamente:
+encontrado y corregido código muerto en `usuarios.py` (import sin usar),
+un bug real donde `app.py` seguía referenciando columnas viejas
+(`nombre`/`rol_tienda`) tras el rediseño de `usuarios.py` (se habría roto
+en producción, atrapado con `AppTest` antes de desplegar), y la ausencia
+de `.gitignore` — sin él, `data/` (150MB de CSV regenerables, incluidas
+las 50 tiendas × 2025-2030) se habría subido al repo público.

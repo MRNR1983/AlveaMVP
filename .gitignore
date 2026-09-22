@@ -1,0 +1,17 @@
+# Datos generados/regenerables -- la app los crea sola al arrancar (ver
+# app.py: cargar_datos_ejemplo). Nunca deben versionarse: son grandes
+# (data/red_50_2025_2030 son 144MB) y no aportan nada como codigo.
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secretos reales -- NUNCA se sube. Streamlit Cloud los toma de su propio
+# panel de configuracion, no de este archivo. Ver jornada40/usuarios.py.
+.streamlit/secrets.toml
+
+# Editor / SO
+.DS_Store

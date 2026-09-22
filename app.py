@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from jornada40 import costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, vista_red
+from jornada40 import costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, usuarios, vista_red
 
 st.set_page_config(page_title="Jornada40 — Autoservicio MX", layout="wide")
 
@@ -124,14 +124,98 @@ def calcular_red(tiendas_ids: list[str], anio: int, tiempo_limite_seg: float, da
 
 
 # ---------------------------------------------------------------------------
-# Interfaz
+# Autenticacion (sencilla, PMV -- ver jornada40/usuarios.py) + Interfaz
 # ---------------------------------------------------------------------------
 
 datos = cargar_datos()
 tiendas_df = datos["tiendas"]
 
+
+@st.cache_data(show_spinner=False)
+def _cargar_usuarios(_tiendas: pd.DataFrame) -> pd.DataFrame:
+    return usuarios.generar_usuarios(_tiendas, seed=42)
+
+
+def _pantalla_login() -> None:
+    st.title("Jornada40 — Autoservicio MX")
+    st.caption("Autenticación simplificada del PMV — no usar en producción sin hash y sesiones reales.")
+    rol_sel = st.radio("Entro como", ["Gerente de tienda", "Admin / HQ", "Super Admin"], horizontal=True)
+
+    if rol_sel == "Gerente de tienda":
+        tienda_sel = st.selectbox("Tienda", tiendas_df["tienda_id"])
+        usuarios_tienda = st.session_state.get("usuarios_df", _cargar_usuarios(tiendas_df))
+        usuarios_activos = usuarios_tienda[(usuarios_tienda["tienda_id"] == tienda_sel)
+                                            & (usuarios_tienda["activo"])]
+        if usuarios_activos.empty:
+            st.error("Las 3 cuentas de esta tienda están desactivadas. Contacta a HQ para reactivar alguna.")
+            return
+        usuario_sel = st.selectbox("Cuenta", usuarios_activos["usuario_id"],
+                                    help=usuarios.ETIQUETA_CUENTA_GENERICA)
+        password = st.text_input("Contraseña", type="password")
+        if st.button("Entrar", type="primary"):
+            if password == usuarios.password_manager():
+                st.session_state["auth"] = {
+                    "rol": "manager", "tienda_id": tienda_sel, "usuario_id": usuario_sel,
+                    "nombre": f"{tienda_sel} · {usuario_sel}",
+                }
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+    elif rol_sel == "Admin / HQ":
+        password = st.text_input("Contraseña de Admin/HQ", type="password")
+        if st.button("Entrar", type="primary"):
+            if password == usuarios.password_admin():
+                st.session_state["auth"] = {"rol": "admin", "tienda_id": None,
+                                             "usuario_id": "ADMIN", "nombre": "Admin/HQ"}
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+    else:
+        password = st.text_input("Contraseña de Super Admin", type="password")
+        if st.button("Entrar", type="primary"):
+            if password == usuarios.password_super_admin():
+                st.session_state["auth"] = {"rol": "super_admin", "tienda_id": None,
+                                             "usuario_id": "SUPER_ADMIN", "nombre": "Super Admin"}
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+
+
+if "auth" not in st.session_state:
+    _pantalla_login()
+    st.stop()
+
+auth_real = st.session_state["auth"]
+st.session_state.setdefault("usuarios_df", _cargar_usuarios(tiendas_df))
+
 st.sidebar.title("Jornada40 — Autoservicio MX")
-paginas_negocio = ["Cargar datos", "Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+_etiqueta_ambito = {"admin": "Admin/HQ", "super_admin": "Super Admin"}.get(auth_real["rol"], auth_real["tienda_id"])
+st.sidebar.caption(f"👤 {auth_real['nombre']} · {_etiqueta_ambito}")
+if st.sidebar.button("Cerrar sesión"):
+    del st.session_state["auth"]
+    st.rerun()
+
+# Super Admin: puede "ver como" cualquier perfil sin volver a loguearse.
+# auth (la variable que usa el resto de la app) queda apuntando al perfil
+# simulado; auth_real (arriba) siempre es la sesion real, para gatear
+# paginas que solo el super admin/admin de verdad debe tocar (Gestion de
+# usuarios), sin importar que perfil este simulando ver.
+auth = auth_real
+if auth_real["rol"] == "super_admin":
+    opciones_ver_como = ["Super Admin (todo)", "Admin / HQ"] + list(tiendas_df["tienda_id"])
+    ver_como = st.sidebar.selectbox("Ver como", opciones_ver_como)
+    if ver_como == "Admin / HQ":
+        auth = {**auth_real, "rol": "admin"}
+    elif ver_como != "Super Admin (todo)":
+        auth = {**auth_real, "rol": "manager", "tienda_id": ver_como}
+st.sidebar.divider()
+
+if auth["rol"] == "manager":
+    paginas_negocio = ["Cargar datos", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+else:
+    paginas_negocio = ["Cargar datos", "Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+if auth_real["rol"] in ("admin", "super_admin"):
+    paginas_negocio.append("Gestión de usuarios")
 usando_datos_propios = bool(st.session_state.get("datos_subidos"))
 etiqueta_datos = "🟢 Cargar datos (usando tus archivos)" if usando_datos_propios else "🔵 Cargar datos (usando datos de ejemplo)"
 pagina = st.sidebar.radio(
@@ -255,7 +339,11 @@ elif pagina == "Vista Red":
 
 elif pagina == "Vista Tienda":
     st.header("Vista Tienda")
-    tienda_id = st.selectbox("Tienda", tiendas_df["tienda_id"])
+    if auth["rol"] == "manager":
+        tienda_id = auth["tienda_id"]
+        st.caption(f"Tienda: {tienda_id} (tu tienda)")
+    else:
+        tienda_id = st.selectbox("Tienda", tiendas_df["tienda_id"])
     if st.button("Calcular esta tienda") or tienda_id in st.session_state.get("cache_tiendas", {}):
         reporte = calcular_resultado_tienda(
             tienda_id, anio, TIEMPO_LIMITE_SEG_DEFAULT,
@@ -305,7 +393,11 @@ elif pagina == "Vista Tienda":
 
 elif pagina == "Simulacros":
     st.header("Simulacros")
-    tienda_id = st.selectbox("Tienda a simular", tiendas_df["tienda_id"])
+    if auth["rol"] == "manager":
+        tienda_id = auth["tienda_id"]
+        st.caption(f"Tienda: {tienda_id} (tu tienda)")
+    else:
+        tienda_id = st.selectbox("Tienda a simular", tiendas_df["tienda_id"])
 
     escenarios_trafico = {
         "Normal": 1.0, "Alta demanda (+15%, ej. Buen Fin)": 1.15,
@@ -349,7 +441,11 @@ elif pagina == "Refuerzos entre tiendas":
     if not resultados_red:
         st.warning("Calcula primero la Vista Red para tener resultados por tienda.")
     else:
-        cluster_sel = st.selectbox("Clúster", sorted(tiendas_df["cluster_id"].unique()))
+        if auth["rol"] == "manager":
+            cluster_sel = tiendas_df.set_index("tienda_id").loc[auth["tienda_id"], "cluster_id"]
+            st.caption(f"Clúster: {cluster_sel} (el de tu tienda)")
+        else:
+            cluster_sel = st.selectbox("Clúster", sorted(tiendas_df["cluster_id"].unique()))
         ids_cluster = tiendas_df.loc[tiendas_df["cluster_id"] == cluster_sel, "tienda_id"]
         propuestas_cluster = {tid: r["propuesta"] for tid, r in resultados_red.items() if tid in ids_cluster.values}
         if len(propuestas_cluster) < 2:
@@ -357,6 +453,30 @@ elif pagina == "Refuerzos entre tiendas":
         else:
             propuestas = simulacros.simular_refuerzo_entre_tiendas(propuestas_cluster)
             st.dataframe(propuestas, width='stretch')
+
+elif pagina == "Gestión de usuarios":
+    st.header("Gestión de usuarios por tienda")
+    st.caption("Cada tienda tiene 3 usuarios (U1/U2/U3) como respaldo de acceso. "
+               "Desactiva uno solo si es necesario -- los otros dos siguen pudiendo entrar.")
+    usuarios_df = st.session_state["usuarios_df"]
+    tienda_filtro = st.selectbox("Filtrar por tienda (opcional)",
+                                  ["(todas)"] + list(tiendas_df["tienda_id"]))
+    vista = usuarios_df if tienda_filtro == "(todas)" else usuarios_df[usuarios_df["tienda_id"] == tienda_filtro]
+
+    editado = st.data_editor(
+        vista, width='stretch', hide_index=True, disabled=["tienda_id", "usuario_id", "etiqueta"],
+        column_config={"activo": st.column_config.CheckboxColumn("Activo")},
+        key="editor_usuarios",
+    )
+    if st.button("Guardar cambios de acceso", type="primary"):
+        usuarios_df.loc[editado.index, "activo"] = editado["activo"]
+        st.session_state["usuarios_df"] = usuarios_df
+        st.success("Actualizado. Los usuarios desactivados ya no podrán iniciar sesión.")
+
+    sin_acceso = usuarios_df.groupby("tienda_id")["activo"].any()
+    tiendas_sin_acceso = sin_acceso[~sin_acceso].index.tolist()
+    if tiendas_sin_acceso:
+        st.error(f"⚠️ Tiendas sin ningún usuario activo (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
 
 elif pagina == "Configuración de reglas":
     st.header("Configuración de reglas legales por vigencia")
