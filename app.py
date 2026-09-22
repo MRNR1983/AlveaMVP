@@ -562,7 +562,9 @@ if auth_real["rol"] in ("admin", "super_admin"):
     modo_avanzado = st.sidebar.toggle("Modo avanzado", value=False)
 else:
     modo_avanzado = False
-if modo_avanzado:
+if modo_avanzado and auth_real["rol"] == "super_admin":
+    # Páginas internas y recálculo global: solo super_admin (HQ), no admin
+    # regional -- son controles a nivel de toda la red, no de una zona.
     pagina_tecnica = st.sidebar.selectbox(
         "Página interna", ["(ninguna)", "Configuración de reglas", "Guion de demo"]
     )
@@ -693,6 +695,12 @@ elif pagina == "Vista Red":
                   help="Tiendas que no llegan al 8% mínimo de ahorro exigido")
 
         st.text(vista_red.resumen_para_demo(consolidado))
+        st.caption(
+            "Las \"horas extra evitadas\" son netas (base menos propuesta) por tienda, sumadas -- "
+            "una tienda puede aportar un número negativo si la propuesta usa MÁS horas extra que el "
+            "base ahí. Por eso un subconjunto de tiendas puede mostrar más horas evitadas que el "
+            "total de la red si excluye justo las tiendas que restan."
+        )
 
         ranking = consolidado["ranking_tiendas"]
         f1, f2 = st.columns(2)
@@ -1004,9 +1012,20 @@ elif pagina == "Calendario":
             if horario_dia.empty:
                 st.info("Nadie tiene turno asignado este día en la propuesta.")
             else:
+                # "horas_trabajadas" (conteo) además de min/max: min-max es
+                # el RANGO entre la primera y la última hora del día en que
+                # la persona aparece trabajando, no necesariamente horas
+                # continuas -- alguien con un hueco a media jornada (turno
+                # partido) puede aparecer con un rango de 0:00-22:00 aunque
+                # solo trabaje 8 horas reales. Sin el conteo, la etiqueta del
+                # chip ("Turno 1 · 0:00-22:00") se lee como un turno de 22h
+                # continuas, que viola las propias reglas de jornada de la
+                # app -- es un problema de cómo se MUESTRA el dato, no de
+                # que alguien esté realmente trabajando 22h.
                 chips = (horario_dia.groupby("empleado_id")["hora"]
-                         .agg(hora_inicio="min", hora_fin="max").reset_index())
+                         .agg(hora_inicio="min", hora_fin="max", horas_trabajadas="count").reset_index())
                 chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
+                chips["es_partido"] = (chips["hora_fin"] - chips["hora_inicio"]) != chips["horas_trabajadas"]
                 chips = chips.sort_values("hora_inicio").reset_index(drop=True)
 
                 # Nombre por empleado_id, con fallback al propio ID -- si el
@@ -1055,8 +1074,13 @@ elif pagina == "Calendario":
                 )
                 if busqueda.strip():
                     _q = busqueda.strip().lower()
+                    def _etiqueta_turno(i: int, row) -> str:
+                        _rango = f"{int(row['hora_inicio'])}:00–{int(row['hora_fin'])}:00"
+                        if row["es_partido"]:
+                            return f"Turno {i + 1} · {_rango} (partido, {int(row['horas_trabajadas'])} h reales)"
+                        return f"Turno {i + 1} · {_rango}"
                     _turno_por_empleado = {
-                        row["empleado_id"]: f"Turno {i + 1} · {int(row['hora_inicio'])}:00–{int(row['hora_fin'])}:00"
+                        row["empleado_id"]: _etiqueta_turno(i, row)
                         for i, row in chips.iterrows()
                     }
                     _coincidencias = [
@@ -1082,7 +1106,16 @@ elif pagina == "Calendario":
                 slots_originales: dict[str, str] = {}  # slot_id -> etiqueta original
                 contenedores: list[dict[str, object]] = []
                 for i, chip in chips.iterrows():
-                    slot_id = f"Turno {i + 1} · {int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00"
+                    _rango = f"{int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00"
+                    # Si el rango no coincide con las horas realmente
+                    # trabajadas, es un turno partido (con hueco) -- se
+                    # aclara en la etiqueta para no dar a entender que
+                    # alguien trabaja continuo 20+ horas.
+                    if chip["es_partido"]:
+                        slot_id = (f"Turno {i + 1} · {_rango} "
+                                   f"(partido, {int(chip['horas_trabajadas'])} h reales)")
+                    else:
+                        slot_id = f"Turno {i + 1} · {_rango}"
                     etiqueta = _etiqueta(chip["empleado_id"])
                     contenedores.append({"header": slot_id, "items": [etiqueta]})
                     slots_originales[slot_id] = etiqueta
@@ -1291,7 +1324,12 @@ elif pagina == "Refuerzos entre tiendas":
             st.write("Necesitas al menos 2 tiendas calculadas en este clúster.")
         else:
             propuestas = simulacros.simular_refuerzo_entre_tiendas(propuestas_cluster)
-            st.dataframe(propuestas, width='stretch')
+            if propuestas.empty:
+                st.info(f"No hay oportunidades de refuerzo entre las {len(propuestas_cluster)} tiendas "
+                        f"calculadas de este clúster -- ninguna combinación de sobra/falta de personal "
+                        f"justifica un traslado por ahora.")
+            else:
+                st.dataframe(propuestas, width='stretch')
 
 elif pagina == "Gestión de usuarios":
     st.header("Gestión de usuarios")
@@ -1300,7 +1338,11 @@ elif pagina == "Gestión de usuarios":
                "zona) no se listan aquí -- siempre están activas.")
     usuarios_df = st.session_state["usuarios_df"]
     # Un admin regional solo gestiona los gerentes de su propia zona; SADMIN los ve todos.
-    tiendas_gestion_df = _tiendas_visibles(auth_real, tiendas_df)
+    # Usa `auth` (no auth_real) para respetar "Ver como" igual que el resto de
+    # las páginas (Vista Red, Vista Tienda, Calendario, Simulacros...) -- antes
+    # usaba auth_real y esta era la única página que "Ver como" no filtraba,
+    # dando una simulación incompleta/engañosa al probar permisos con SADMIN.
+    tiendas_gestion_df = _tiendas_visibles(auth, tiendas_df)
     gerentes_df = usuarios_df[(usuarios_df["rol"] == "manager")
                                & (usuarios_df["tienda_id"].isin(tiendas_gestion_df["tienda_id"]))]
     tienda_filtro = st.selectbox("Filtrar por tienda (opcional)",
