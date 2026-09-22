@@ -218,8 +218,8 @@ div[class*="st-key-cal_dia_"] button:hover:not(:disabled) {
 }
 div[class*="st-key-cal_dia_"] button:disabled {
     background: #fbfbfd;
-    border-color: #ececec;
-    color: #c7c7cc;
+    border-color: #e5e5ea;
+    color: #86868b;
 }
 /* celda vacía de relleno (antes / después del mes) */
 .cal-celda-vacia {
