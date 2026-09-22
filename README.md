@@ -65,20 +65,45 @@ streamlit run app.py
 ```
 jornada40/
   reglas.py            Motor de reglas legales por vigencia (autoajustable por año)
-  datos_sinteticos.py  Generador del dataset sintético (50 tiendas)
+  datos_sinteticos.py  Generador del dataset sintético (50 tiendas, año completo)
   demanda_personal.py  Tráfico/ventas -> personas requeridas (Erlang C + carga/productividad)
   escenario_base.py    Horario base: rotativo fijo + horas extra realista
   optimizador.py       Optimizador CP-SAT (OR-Tools): horario propuesto + techo teórico
-  costos_ahorro.py     Ahorro semanal/diario, brecha vs. techo, tabla de trazabilidad
+  costos_ahorro.py     Ahorro semanal/diario, brecha vs. techo, trazabilidad, calificación de ediciones manuales
+  calendario.py         Navegación mes -> semana -> día (funciones puras, sin Streamlit)
   simulacros.py        Palancas de escenario + préstamo de personal entre tiendas
   vista_red.py         Consolidado de las 50 tiendas, filtros, acciones masivas
-  tests/                62 pruebas unitarias (pytest)
-app.py                 Interfaz Streamlit
+  usuarios.py            Roster y login (SADMIN / ADMIN-Z1..Z5 / Man001..Man050)
+  tests/                83 pruebas unitarias (pytest)
+app.py                 Interfaz Streamlit (pantalla del gerente: calendario mes/semana/día)
 Dockerfile, requirements.txt
 docs/
   guion_demo.md         Guion de 45 min para la demo con el CEO/CFO
   registro_agentic.md    Registro de uso de herramientas agénticas por módulo
 ```
+
+## Calendario del gerente (mes -> semana -> día)
+
+La pantalla de arranque del gerente es un calendario (cuadrícula de días,
+como el catálogo de tiendas: 1 clic = 1 semana). Regla de producto,
+documentada en `jornada40/calendario.py`:
+
+- El dataset de ejemplo cubre el **año completo** (`datos_sinteticos.py`,
+  antes solo generaba 7 días), así que cualquier mes/semana del año se
+  puede navegar.
+- **El mes es navegación visual gratis** (solo fechas, sin calcular nada).
+  El cálculo real (horario base, propuesta del optimizador, techo teórico y
+  ahorro en MXN) se dispara **solo cuando el gerente abre una semana**
+  específica (botón "Calcular esta semana") — calcular las 52 semanas de
+  una tienda al arrancar sería lentísimo e innecesario.
+- Dentro de una semana ya calculada, cada día se puede abrir para ver sus
+  turnos ("chips": un bloque por empleado) y editarlos a mano —
+  **solo reasignar un turno a otro empleado de la plantilla** (no se
+  puede inventar horas nuevas). Como el CP-SAT ya encontró el óptimo legal
+  para esa semana, cualquier edición manual solo puede alejarse de él; por
+  eso se califica con `costos_ahorro.calificar_edicion_manual` (delta de
+  costo en MXN, si deja hueco nuevo en hora pico, y si empuja a alguien a
+  horas extra triples) en vez de resolverse como un problema nuevo.
 
 ## Supuestos clave (y de dónde salen)
 
@@ -130,11 +155,21 @@ texto del decreto y la LFT vigente.
   (art. 132 fr. XXXIV) — el PMV solo exporta CSV.
 - Pronóstico de demanda con machine learning (el dataset es sintético con
   semilla fija).
-- Horizonte de más de una semana.
 - Día de jornada electoral del art. 74 fr. IX (depende de un calendario
   electoral externo).
 - Distinción de jornada diurna/nocturna/mixta por turno en el optimizador
   (usa un tope diario genérico; ver docstring de `optimizador.py`).
+- Edición manual de turnos más allá de reasignar (arrastrar horas, crear
+  turnos nuevos, editar por lotes) — el PMV solo permite reasignar un turno
+  ya generado a otro empleado de la plantilla, calificado contra el óptimo
+  (ver "Calendario del gerente" arriba). Drag-and-drop real y edición
+  masiva quedan para una siguiente iteración.
+
+**Nota**: el optimizador y el cálculo de horario siguen operando **una
+semana a la vez** (como exige la LFT, domingo a sábado) — lo que cambió es
+que el dataset y la navegación del calendario ahora cubren el año
+completo, así que el gerente puede calcular *cualquier* semana del año,
+no solo la primera.
 
 ## Nota de rendimiento
 

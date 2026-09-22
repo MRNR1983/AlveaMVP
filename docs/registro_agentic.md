@@ -215,3 +215,63 @@ otro módulo es un riesgo de staleness silencioso -- no basta con probar
 localmente (ahí sí se regenera porque no hay caché persistente entre
 corridas de `pytest`/`AppTest`), hay que pensar en el caso de despliegue
 con caché viejo.
+
+## Calendario del gerente: mes -> semana -> día, con edición ligera de turnos (21-sep-2026)
+Instrucción del usuario: la pantalla principal del gerente ("Cargar
+datos") no reflejaba lo que se había acordado -- debía ser un calendario
+tipo tabla periódica (cuadrícula de días clicables), navegando
+mes -> semana -> día, con edición de turnos por "chips" (reasignar/
+intercambiar) calificada contra el óptimo del optimizador.
+
+Se marcó una posible contradicción con el README (que listaba "horizonte
+de más de una semana" como fuera de alcance) y con el hecho de que todo
+el pipeline de cómputo (demanda, escenario base, optimizador) siempre
+operó sobre una sola semana. El usuario aclaró: el generador de dataset
+sintético ya soporta año completo (se construyó en una sesión anterior
+con calibración real de quincena/Buen Fin/Navidad) -- lo que faltaba era
+la estructura de navegación arriba, no el cómputo. Se construyó en tres
+capas, cada una verificada antes de pasar a la siguiente:
+
+1. **Dataset de año completo**: `app.cargar_datos_ejemplo()` ahora genera
+   (o detecta y regenera si encuentra un dataset viejo de 7 días) el año
+   completo 2027 vía `datos_sinteticos.generar_dataset_completo`.
+   `calcular_resultado_tienda`/`calcular_red` reciben un parámetro
+   `fecha_inicio` explícito y recortan las tablas de tráfico/ventas/
+   ausentismo a los 7 días de esa semana antes de llamar a
+   `demanda_personal`/`escenario_base`/`optimizador` -- el pipeline de
+   cómputo NO cambió, solo se parametrizó qué semana del año le toca.
+   Verificado con una semana de mediados de año (4-jul-2027, no la
+   primera del dataset) para confirmar que el recorte por fecha realmente
+   funciona y no solo la ruta por defecto.
+2. **`jornada40/calendario.py`** (módulo nuevo, puro -- sin pandas ni
+   Streamlit, para que sea trivial de probar): funciones para la
+   cuadrícula de un mes (`matriz_mes`, semanas de 4 a 6 filas según el
+   mes), resolver la semana domingo-sábado de cualquier fecha
+   (`semana_de`, reusa `reglas.semana_domingo_a_sabado`), navegación de
+   mes, y el estado de cada celda (dentro del rango del dataset,
+   calculada o no). 21 pruebas unitarias nuevas.
+3. **UI en `app.py`** (página "Calendario", landing del gerente en vez de
+   "Cargar datos"): vista de mes (cuadrícula clicable, 🟢 semana
+   calculada / 🔵 sin calcular), vista de semana (botón explícito
+   "Calcular esta semana" -- el mes es navegación gratis, el cómputo real
+   solo se dispara cuando el gerente abre una semana, porque calcular las
+   52 semanas de una tienda al arrancar sería lentísimo e innecesario) y
+   vista de día con "chips" (un bloque por empleado ese día, derivado de
+   `horario_df`). La edición se limita a reasignar un chip a otro
+   empleado de la plantilla (no crear horas nuevas ni mover límites) y se
+   califica con `costos_ahorro.calificar_edicion_manual` (función
+   preexistente, no se reescribió) antes de mostrarle al gerente el
+   impacto en costo y cobertura pico.
+
+Verificación: `pytest` completo (83 pruebas, incluye las 21 nuevas de
+`calendario.py`) más `AppTest` cubriendo el flujo real de principio a fin
+-- login como `Man001` -> landing es Calendario -> clic en un día ->
+vista de semana -> "Calcular esta semana" (CP-SAT real, ~20s) -> "Ver
+día" -> reasignar un chip -> "Calificar cambios" -- sin excepciones en
+ningún paso, y repetido para `SADMIN`/`ADMIN-Z1` para confirmar que
+también pueden abrir el Calendario (eligiendo tienda primero).
+
+Pendiente explícito, no resuelto en esta iteración: edición real por
+arrastre (drag-and-drop) -- Streamlit no lo soporta nativamente sin un
+componente de terceros; el PMV usa selectboxes por chip como sustituto
+funcional, documentado como límite conocido en el README.

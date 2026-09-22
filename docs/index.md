@@ -26,8 +26,12 @@ para el detalle completo).
 
 ## Estado del PMV
 
-- 62 pruebas unitarias, todas pasando.
-- App Streamlit verificada extremo a extremo (sin excepciones en las 6 pantallas).
+- 83 pruebas unitarias, todas pasando.
+- App Streamlit verificada extremo a extremo (sin excepciones en las 7 pantallas,
+  incluyendo el flujo completo del calendario: mes → semana → día → edición
+  de turno → calificación).
+- Pantalla de arranque del gerente: calendario mes/semana/día sobre el año
+  completo (ver README para la regla de "mes gratis, semana bajo demanda").
 - **Pendiente antes de la demo real**: calibrar el ahorro (salió >60% en
   corridas chicas de prueba, hay que correr las 50 tiendas y revisar
   `demanda_personal.py` / `escenario_base.py`).
@@ -40,4 +44,5 @@ para el detalle completo).
 
 Traslado físico de personal entre tiendas como decisión legal, integración
 con nómina/registro electrónico de jornada, pronóstico de demanda con ML,
-horizonte de más de una semana. Detalle completo en el README.
+edición de turnos más allá de reasignar (drag-and-drop real, edición
+masiva). Detalle completo en el README.

@@ -15,13 +15,13 @@ corrida real antes de la demo (botón "Calcular red completa").
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from jornada40 import costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, usuarios, vista_red
+from jornada40 import calendario, costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, usuarios, vista_red
 
 st.set_page_config(page_title="Alvea PMV — Autoservicio MX", layout="wide")
 
@@ -29,6 +29,10 @@ DATA_DIR = Path("data")
 RESULTADOS_DIR = DATA_DIR / "resultados"
 ANIO_DEFAULT = 2027
 FECHA_INICIO_DEFAULT = reglas.semana_domingo_a_sabado(date(ANIO_DEFAULT, 1, 1))[0]
+# El calendario (mes/semana/día del gerente) navega cualquier semana del
+# año -- el dataset de ejemplo cubre el año completo (1-ene a 31-dic) para
+# que cualquier semana se pueda calcular bajo demanda, no solo la primera.
+FECHA_FIN_DATASET_EJEMPLO = date(ANIO_DEFAULT, 12, 31)
 TIEMPO_LIMITE_SEG_DEFAULT = 10.0
 
 
@@ -40,15 +44,27 @@ ARCHIVOS_DATASET = ["tiendas", "trafico", "ventas", "plantilla", "ausentismo"]
 COLUMNAS_CON_FECHA = {"trafico", "ventas", "ausentismo"}
 
 
-@st.cache_data(show_spinner="Generando dataset de ejemplo (primera vez)...")
+@st.cache_data(show_spinner="Generando dataset de ejemplo (año completo, primera vez)...")
 def cargar_datos_ejemplo() -> dict[str, pd.DataFrame]:
-    """Dataset sintético (marca ficticia) que se usa mientras no se sube nada propio."""
+    """Dataset sintético (marca ficticia) que se usa mientras no se sube nada propio.
+
+    Cubre el año completo (no solo una semana) para que el calendario del
+    gerente pueda calcular cualquier semana bajo demanda.
+    """
     if all((DATA_DIR / f"{n}.csv").exists() for n in ARCHIVOS_DATASET):
-        return {n: pd.read_csv(DATA_DIR / f"{n}.csv", parse_dates=["fecha"] if n in
-                                COLUMNAS_CON_FECHA else None)
-                for n in ARCHIVOS_DATASET}
+        datos = {n: pd.read_csv(DATA_DIR / f"{n}.csv", parse_dates=["fecha"] if n in
+                                 COLUMNAS_CON_FECHA else None)
+                 for n in ARCHIVOS_DATASET}
+        # Dataset viejo (de antes del calendario) -- traía solo 7 días. Se
+        # detecta por el rango de fechas y se regenera al año completo.
+        rango_trafico = pd.to_datetime(datos["trafico"]["fecha"])
+        if rango_trafico.max() - rango_trafico.min() < pd.Timedelta(days=30):
+            for archivo in ARCHIVOS_DATASET:
+                (DATA_DIR / f"{archivo}.csv").unlink(missing_ok=True)
+        else:
+            return datos
     return datos_sinteticos.generar_dataset_completo(
-        FECHA_INICIO_DEFAULT, FECHA_INICIO_DEFAULT + pd.Timedelta(days=6), seed=42, out_dir=DATA_DIR,
+        FECHA_INICIO_DEFAULT, FECHA_FIN_DATASET_EJEMPLO, seed=42, out_dir=DATA_DIR,
     )
 
 
@@ -72,34 +88,45 @@ def calcular_resultado_tienda(
     tienda_id: str, anio: int, tiempo_limite_seg: float,
     _tiendas: pd.DataFrame, _trafico: pd.DataFrame, _ventas: pd.DataFrame,
     _plantilla: pd.DataFrame, _ausentismo: pd.DataFrame,
+    fecha_inicio: date = FECHA_INICIO_DEFAULT,
 ) -> dict:
-    """Calcula base + propuesta + techo + reporte CFO de UNA tienda.
+    """Calcula base + propuesta + techo + reporte CFO de UNA tienda, UNA semana.
 
     Los DataFrames llevan "_" al inicio del nombre para que Streamlit no
     intente hashear su contenido (son estáticos por sesión); el cache se
-    invalida por (tienda_id, anio, tiempo_limite_seg). Usa "Recalcular
-    todo" en la barra lateral si cambiaste los datos de origen.
+    invalida por (tienda_id, anio, tiempo_limite_seg, fecha_inicio). Usa
+    "Recalcular todo" en la barra lateral si cambiaste los datos de origen.
+
+    fecha_inicio es el domingo de la semana a calcular (domingo-sábado, ver
+    reglas.semana_domingo_a_sabado) -- el dataset trae el año completo, así
+    que aquí se recorta a los 7 días de esa semana antes de calcular; el
+    resto del pipeline (demanda, escenario base, optimizador) sigue
+    operando sobre una sola semana como siempre.
     """
+    fecha_fin = fecha_inicio + timedelta(days=6)
     tiendas_t = _normalizar_fechas(_tiendas.loc[_tiendas["tienda_id"] == tienda_id])
     trafico_t = _normalizar_fechas(_trafico.loc[_trafico["tienda_id"] == tienda_id])
+    trafico_t = trafico_t.loc[(trafico_t["fecha"] >= fecha_inicio) & (trafico_t["fecha"] <= fecha_fin)]
     ventas_t = _normalizar_fechas(_ventas.loc[_ventas["tienda_id"] == tienda_id])
+    ventas_t = ventas_t.loc[(ventas_t["fecha"] >= fecha_inicio) & (ventas_t["fecha"] <= fecha_fin)]
     plantilla_t = _plantilla.loc[_plantilla["tienda_id"] == tienda_id]
     empleados_t = set(plantilla_t["empleado_id"])
     ausentismo_t = _normalizar_fechas(_ausentismo.loc[_ausentismo["empleado_id"].isin(empleados_t)])
+    ausentismo_t = ausentismo_t.loc[(ausentismo_t["fecha"] >= fecha_inicio) & (ausentismo_t["fecha"] <= fecha_fin)]
 
     demanda = demanda_personal.calcular_demanda_tienda(tienda_id, trafico_t, ventas_t, tiendas_t)
     demanda = demanda_personal.marcar_franjas_pico(demanda)
 
     base = escenario_base.calcular_horario_base_tienda(
-        tienda_id, anio, plantilla_t, ausentismo_t, demanda, fecha_inicio=FECHA_INICIO_DEFAULT,
+        tienda_id, anio, plantilla_t, ausentismo_t, demanda, fecha_inicio=fecha_inicio,
     )
     propuesta = optimizador.resolver_tienda(
         tienda_id, anio, plantilla_t, demanda, ausentismo_t,
-        tiempo_limite_seg=tiempo_limite_seg, fecha_inicio=FECHA_INICIO_DEFAULT,
+        tiempo_limite_seg=tiempo_limite_seg, fecha_inicio=fecha_inicio,
     )
     techo = optimizador.resolver_techo_teorico(
         tienda_id, anio, plantilla_t, demanda, ausentismo_t,
-        tiempo_limite_seg=tiempo_limite_seg, fecha_inicio=FECHA_INICIO_DEFAULT,
+        tiempo_limite_seg=tiempo_limite_seg, fecha_inicio=fecha_inicio,
     )
     reporte = costos_ahorro.generar_reporte_cfo(tienda_id, base, propuesta, techo, anio)
     reporte["status"] = propuesta["status"]
@@ -107,16 +134,19 @@ def calcular_resultado_tienda(
     reporte["base"] = base
     reporte["techo"] = techo
     reporte["demanda"] = demanda
+    reporte["fecha_inicio"] = fecha_inicio
     return reporte
 
 
-def calcular_red(tiendas_ids: list[str], anio: int, tiempo_limite_seg: float, datos: dict) -> dict[str, dict]:
+def calcular_red(tiendas_ids: list[str], anio: int, tiempo_limite_seg: float, datos: dict,
+                  fecha_inicio: date = FECHA_INICIO_DEFAULT) -> dict[str, dict]:
     resultados = {}
     barra = st.progress(0.0, text="Calculando tiendas...")
     for i, tid in enumerate(tiendas_ids):
         resultados[tid] = calcular_resultado_tienda(
             tid, anio, tiempo_limite_seg,
             datos["tiendas"], datos["trafico"], datos["ventas"], datos["plantilla"], datos["ausentismo"],
+            fecha_inicio=fecha_inicio,
         )
         barra.progress((i + 1) / len(tiendas_ids), text=f"Calculando tiendas... {tid} ({i+1}/{len(tiendas_ids)})")
     barra.empty()
@@ -152,6 +182,20 @@ div[data-testid="stForm"] {
     border: 1px solid rgba(140, 140, 140, 0.35);
     border-radius: 6px;
     padding: 2rem 2rem 1.25rem 2rem;
+}
+</style>
+"""
+
+# Cuadrícula de días tipo "tabla periódica": celdas cuadradas y compactas en
+# vez de los botones anchos por defecto de Streamlit. Solo cosmético -- el
+# comportamiento (clic = navegar a la semana) es el mismo botón de siempre.
+_CSS_CALENDARIO = """
+<style>
+div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+    aspect-ratio: 1;
+    min-height: 2.6rem;
+    padding: 0.15rem;
+    font-size: 0.85rem;
 }
 </style>
 """
@@ -243,9 +287,12 @@ st.sidebar.divider()
 tiendas_visibles_df = _tiendas_visibles(auth, tiendas_df)
 
 if auth["rol"] == "manager":
-    paginas_negocio = ["Cargar datos", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+    # DECISION DE PRODUCTO (21-sep-2026): la pantalla de arranque del gerente
+    # deja de ser "Cargar datos" y pasa a ser el Calendario (mes -> semana ->
+    # día) -- es como el negocio piensa el horario, no un formulario de carga.
+    paginas_negocio = ["Calendario", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas", "Cargar datos"]
 else:
-    paginas_negocio = ["Cargar datos", "Vista Red", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
+    paginas_negocio = ["Cargar datos", "Vista Red", "Vista Tienda", "Calendario", "Simulacros", "Refuerzos entre tiendas"]
 if auth_real["rol"] in ("admin", "super_admin"):
     paginas_negocio.append("Gestión de usuarios")
 usando_datos_propios = bool(st.session_state.get("datos_subidos"))
@@ -426,6 +473,189 @@ elif pagina == "Vista Tienda":
         if modo_avanzado:
             st.write("**Tabla de trazabilidad de reglas (detalle técnico)**")
             st.dataframe(reporte["tabla_trazabilidad"], width='stretch')
+
+elif pagina == "Calendario":
+    # Mes -> semana -> día, con edición ligera de turnos (chips) en el día.
+    # Regla de producto (ver docstring de jornada40/calendario.py): el mes es
+    # navegación visual gratis (solo fechas); los datos reales (costo,
+    # ahorro, horario) solo se calculan para la semana que el gerente abre.
+    st.header("Calendario")
+    if auth["rol"] == "manager":
+        tienda_id = auth["tienda_id"]
+        st.caption(f"Tienda: {tienda_id} (tu tienda)")
+    else:
+        tienda_id = st.selectbox("Tienda", tiendas_visibles_df["tienda_id"], key="cal_tienda_sel")
+
+    FECHA_MIN_CAL, FECHA_MAX_CAL = FECHA_INICIO_DEFAULT, FECHA_FIN_DATASET_EJEMPLO
+    st.session_state.setdefault("cal_anio", FECHA_MIN_CAL.year)
+    st.session_state.setdefault("cal_mes", FECHA_MIN_CAL.month)
+    st.session_state.setdefault("cal_vista", "mes")
+    st.session_state.setdefault("cache_calendario", {})
+    st.markdown(_CSS_CALENDARIO, unsafe_allow_html=True)
+
+    cal_anio, cal_mes = st.session_state["cal_anio"], st.session_state["cal_mes"]
+    semanas_calculadas = {clave for clave in st.session_state["cache_calendario"] if clave[0] == tienda_id}
+
+    if st.session_state["cal_vista"] == "mes":
+        nav1, nav2, nav3 = st.columns([1, 4, 1])
+        if nav1.button("◀ Mes", key="cal_mes_prev"):
+            st.session_state["cal_anio"], st.session_state["cal_mes"] = calendario.mes_anterior(cal_anio, cal_mes)
+            st.rerun()
+        nav2.markdown(f"<h4 style='text-align:center'>{calendario.NOMBRES_MES[cal_mes]} {cal_anio}</h4>",
+                       unsafe_allow_html=True)
+        if nav3.button("Mes ▶", key="cal_mes_next"):
+            st.session_state["cal_anio"], st.session_state["cal_mes"] = calendario.mes_siguiente(cal_anio, cal_mes)
+            st.rerun()
+
+        encabezados = st.columns(7)
+        for col, nombre in zip(encabezados, calendario.DIAS_SEMANA_ABREV):
+            col.markdown(f"<div style='text-align:center;font-weight:600'>{nombre}</div>", unsafe_allow_html=True)
+
+        for fila in calendario.matriz_mes(cal_anio, cal_mes):
+            cols = st.columns(7)
+            for col, fecha in zip(cols, fila):
+                if fecha is None:
+                    col.markdown("&nbsp;")
+                    continue
+                resumen = calendario.resumen_dia(fecha, tienda_id, FECHA_MIN_CAL, FECHA_MAX_CAL, semanas_calculadas)
+                if not resumen["dentro_de_rango"]:
+                    col.button(str(fecha.day), key=f"cal_dia_{fecha.isoformat()}", disabled=True)
+                    continue
+                emoji = "🟢" if resumen["calculado"] else "🔵"
+                if col.button(f"{emoji}\n{fecha.day}", key=f"cal_dia_{fecha.isoformat()}"):
+                    st.session_state["cal_vista"] = "semana"
+                    st.session_state["cal_semana_sel"] = resumen["semana_inicio"]
+                    st.rerun()
+        st.caption("🟢 semana con horario ya calculado · 🔵 semana sin calcular — clic en un día para abrir su semana "
+                   "(domingo a sábado, como opera la tienda).")
+
+    elif st.session_state["cal_vista"] == "semana":
+        semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
+        semana_fin = semana_inicio + timedelta(days=6)
+        if st.button("◀ Volver al mes"):
+            st.session_state["cal_vista"] = "mes"
+            st.rerun()
+        st.subheader(f"Semana del {semana_inicio:%d-%b-%Y} al {semana_fin:%d-%b-%Y}")
+
+        clave = (tienda_id, semana_inicio)
+        if not calendario.semana_dentro_de_rango(semana_inicio, FECHA_MIN_CAL, FECHA_MAX_CAL):
+            st.warning("Esta semana queda fuera del año con datos de ejemplo (1-ene a 31-dic de "
+                       f"{FECHA_MIN_CAL.year}).")
+        elif clave not in st.session_state["cache_calendario"]:
+            st.info("Esta semana todavía no se ha calculado (el mes es navegación gratis; el "
+                     "cálculo real de horario y ahorro se dispara semana por semana).")
+            if st.button("Calcular esta semana", type="primary"):
+                with st.spinner("Calculando horario base, propuesta del optimizador y techo teórico..."):
+                    reporte = calcular_resultado_tienda(
+                        tienda_id, anio, TIEMPO_LIMITE_SEG_DEFAULT,
+                        datos["tiendas"], datos["trafico"], datos["ventas"], datos["plantilla"], datos["ausentismo"],
+                        fecha_inicio=semana_inicio,
+                    )
+                    st.session_state["cache_calendario"][clave] = reporte
+                st.rerun()
+        else:
+            reporte = st.session_state["cache_calendario"][clave]
+            st.write(reporte["resumen_ejecutivo"])
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Costo base (MXN)", f"${reporte['ahorro_semanal']['costo_base_mxn']:,.0f}")
+            c2.metric("Costo propuesta (MXN)", f"${reporte['ahorro_semanal']['costo_propuesta_mxn']:,.0f}")
+            c3.metric("Ahorro", f"{reporte['ahorro_semanal']['ahorro_pct']:.1%}")
+
+            st.write("**Días de la semana** (clic en un día para ver y ajustar el turno)")
+            horario_df = reporte["propuesta"]["horario_df"]
+            dia_cols = st.columns(7)
+            for i, dcol in enumerate(dia_cols):
+                fecha_d = semana_inicio + timedelta(days=i)
+                dcol.markdown(f"**{calendario.DIAS_SEMANA_ABREV[i]}**\n{fecha_d.day}")
+                if not horario_df.empty:
+                    horas_dia = horario_df[pd.to_datetime(horario_df["fecha"]).dt.date == fecha_d]
+                    dcol.caption(f"{horas_dia['empleado_id'].nunique()} personas")
+                if dcol.button("Ver día", key=f"cal_verdia_{fecha_d.isoformat()}"):
+                    st.session_state["cal_vista"] = "dia"
+                    st.session_state["cal_dia_sel"] = fecha_d
+                    st.rerun()
+
+    else:  # vista == "dia"
+        semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
+        fecha_d = st.session_state.get("cal_dia_sel", semana_inicio)
+        if st.button("◀ Volver a la semana"):
+            st.session_state["cal_vista"] = "semana"
+            st.rerun()
+        nombre_dia = calendario.DIAS_SEMANA_ABREV[(fecha_d.weekday() + 1) % 7]
+        st.subheader(f"{nombre_dia} {fecha_d:%d-%b-%Y}")
+
+        clave = (tienda_id, semana_inicio)
+        reporte = st.session_state.get("cache_calendario", {}).get(clave)
+        if reporte is None:
+            st.warning("Primero calcula la semana completa (botón en la vista de semana).")
+        else:
+            horario_df = reporte["propuesta"]["horario_df"]
+            plantilla_t = datos["plantilla"].loc[datos["plantilla"]["tienda_id"] == tienda_id]
+            horario_dia = (horario_df[pd.to_datetime(horario_df["fecha"]).dt.date == fecha_d]
+                            if not horario_df.empty else horario_df)
+
+            # "Chips" = un turno por empleado ese día (bloque hora_inicio-hora_fin
+            # a partir de las horas trabajadas). Edición permitida: SOLO
+            # renombrar (reasignar a otro empleado de la plantilla) o
+            # intercambiar dos chips -- el CP-SAT ya encontró el óptimo legal,
+            # así que cualquier edición manual solo puede alejarse de él; por
+            # eso se califica con costos_ahorro.calificar_edicion_manual en
+            # vez de resolverse como un problema nuevo.
+            if horario_dia.empty:
+                st.info("Nadie tiene turno asignado este día en la propuesta.")
+            else:
+                chips = (horario_dia.groupby("empleado_id")["hora"]
+                         .agg(hora_inicio="min", hora_fin="max").reset_index())
+                chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
+                chips = chips.sort_values("hora_inicio").reset_index(drop=True)
+
+                st.write(f"**{len(chips)} turnos ({nombre_dia})**")
+                empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
+                clave_edicion = (tienda_id, fecha_d)
+                st.session_state.setdefault("cal_ediciones", {})
+                edicion_dia = st.session_state["cal_ediciones"].setdefault(clave_edicion, {})
+
+                for _, chip in chips.iterrows():
+                    emp_original = chip["empleado_id"]
+                    ch1, ch2 = st.columns([2, 3])
+                    ch1.markdown(f"🏷️ **{emp_original}** · {int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00")
+                    opciones = [emp_original] + [e for e in empleados_tienda if e != emp_original]
+                    actual = edicion_dia.get(emp_original, emp_original)
+                    nuevo = ch2.selectbox(
+                        "Reasignar a", opciones, index=opciones.index(actual) if actual in opciones else 0,
+                        key=f"cal_chip_{fecha_d.isoformat()}_{emp_original}", label_visibility="collapsed",
+                    )
+                    if nuevo != emp_original:
+                        edicion_dia[emp_original] = nuevo
+                    elif emp_original in edicion_dia:
+                        del edicion_dia[emp_original]
+
+                if edicion_dia:
+                    st.write(f"**{len(edicion_dia)} turno(s) reasignado(s) sin calificar todavía.**")
+                    if st.button("Calificar cambios", type="primary"):
+                        editado_df = horario_df.copy()
+                        mascara_dia = pd.to_datetime(editado_df["fecha"]).dt.date == fecha_d
+                        for original, nuevo_emp in edicion_dia.items():
+                            editado_df.loc[mascara_dia & (editado_df["empleado_id"] == original),
+                                            "empleado_id"] = nuevo_emp
+                        calif = costos_ahorro.calificar_edicion_manual(
+                            horario_df, editado_df, plantilla_t, reporte["demanda"], anio,
+                        )
+                        st.session_state[f"cal_calif_{clave_edicion}"] = calif
+
+                calif = st.session_state.get(f"cal_calif_{clave_edicion}")
+                if calif:
+                    color = {"No recomendado": "error", "Costoso": "error", "Caro": "warning",
+                             "Aceptable": "warning", "Neutral": "success"}.get(calif["calificacion"], "info")
+                    getattr(st, color)(f"**{calif['calificacion']}** — {calif['mensaje']}")
+                    cc1, cc2 = st.columns(2)
+                    cc1.metric("Delta costo (MXN/semana)", f"${calif['delta_costo_mxn']:,.0f}")
+                    cc2.metric("Horas pico sin cubrir (nuevas)", calif["delta_horas_deficit_pico"])
+                    if calif["cambios_por_empleado"]:
+                        st.dataframe(pd.DataFrame(calif["cambios_por_empleado"]), width='stretch')
+
+            st.caption("Vista de edición ligera del PMV: solo reasignación de turnos ya generados por el "
+                       "optimizador, calificada contra el óptimo legal — no reemplaza al optimizador.")
 
 elif pagina == "Simulacros":
     st.header("Simulacros")
