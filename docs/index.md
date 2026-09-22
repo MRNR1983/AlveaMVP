@@ -12,6 +12,12 @@ actual.
 **App funcional (en vivo):** [alveamvp.streamlit.app](https://alveamvp.streamlit.app/)
 **Repo (código completo):** [github.com/MRNR1983/AlveaMVP](https://github.com/MRNR1983/AlveaMVP)
 
+**Login:** la app pide iniciar sesión (autenticador simple de PMV, una
+sola contraseña para los 3 roles). Elige el rol (Manager / Admin / SAdmin)
+en la misma pantalla y usa la contraseña **`3.14159265358`** (primeros
+dígitos de π — público a propósito, ver README para el detalle). Con
+Manager también elige tienda y cuenta (U1/U2/U3).
+
 ## Empieza aquí
 
 - [README — cómo correrlo, estructura, supuestos](https://github.com/MRNR1983/AlveaMVP/blob/main/README.md)

@@ -136,49 +136,63 @@ def _cargar_usuarios(_tiendas: pd.DataFrame) -> pd.DataFrame:
     return usuarios.generar_usuarios(_tiendas, seed=42)
 
 
-def _pantalla_login() -> None:
-    st.title("Jornada40 — Autoservicio MX")
-    st.caption("Autenticación simplificada del PMV — no usar en producción sin hash y sesiones reales.")
-    rol_sel = st.radio("Entro como", ["Gerente de tienda", "Admin / HQ", "Super Admin"], horizontal=True)
+_CSS_LOGIN = """
+<style>
+div[data-testid="stForm"] {
+    border: 1px solid rgba(140, 140, 140, 0.35);
+    border-radius: 6px;
+    padding: 2rem 2rem 1.25rem 2rem;
+}
+</style>
+"""
 
-    if rol_sel == "Gerente de tienda":
-        tienda_sel = st.selectbox("Tienda", tiendas_df["tienda_id"])
-        usuarios_tienda = st.session_state.get("usuarios_df", _cargar_usuarios(tiendas_df))
-        usuarios_activos = usuarios_tienda[(usuarios_tienda["tienda_id"] == tienda_sel)
-                                            & (usuarios_tienda["activo"])]
-        if usuarios_activos.empty:
-            st.error("Las 3 cuentas de esta tienda están desactivadas. Contacta a HQ para reactivar alguna.")
-            return
-        usuario_sel = st.selectbox("Cuenta", usuarios_activos["usuario_id"],
-                                    help=usuarios.ETIQUETA_CUENTA_GENERICA)
-        password = st.text_input("Contraseña", type="password")
-        if st.button("Entrar", type="primary"):
-            if password == usuarios.password_manager():
-                st.session_state["auth"] = {
-                    "rol": "manager", "tienda_id": tienda_sel, "usuario_id": usuario_sel,
-                    "nombre": f"{tienda_sel} · {usuario_sel}",
-                }
-                st.rerun()
-            else:
-                st.error("Contraseña incorrecta.")
-    elif rol_sel == "Admin / HQ":
-        password = st.text_input("Contraseña de Admin/HQ", type="password")
-        if st.button("Entrar", type="primary"):
-            if password == usuarios.password_admin():
-                st.session_state["auth"] = {"rol": "admin", "tienda_id": None,
-                                             "usuario_id": "ADMIN", "nombre": "Admin/HQ"}
-                st.rerun()
-            else:
-                st.error("Contraseña incorrecta.")
-    else:
-        password = st.text_input("Contraseña de Super Admin", type="password")
-        if st.button("Entrar", type="primary"):
-            if password == usuarios.password_super_admin():
-                st.session_state["auth"] = {"rol": "super_admin", "tienda_id": None,
-                                             "usuario_id": "SUPER_ADMIN", "nombre": "Super Admin"}
-                st.rerun()
-            else:
-                st.error("Contraseña incorrecta.")
+_ROLES_LOGIN = ["Manager", "Admin", "SAdmin"]
+
+
+def _pantalla_login() -> None:
+    st.markdown(_CSS_LOGIN, unsafe_allow_html=True)
+    _, col_mid, _ = st.columns([1, 1.2, 1])
+    with col_mid:
+        st.markdown("### Jornada40")
+        with st.form("form_login", border=False):
+            rol_sel = st.radio("Cuenta", _ROLES_LOGIN, horizontal=True, label_visibility="collapsed")
+
+            tienda_sel = usuario_sel = None
+            if rol_sel == "Manager":
+                tienda_sel = st.selectbox("Tienda", tiendas_df["tienda_id"], label_visibility="collapsed")
+                usuarios_tienda = st.session_state.get("usuarios_df", _cargar_usuarios(tiendas_df))
+                usuarios_activos = usuarios_tienda[(usuarios_tienda["tienda_id"] == tienda_sel)
+                                                    & (usuarios_tienda["activo"])]
+                if usuarios_activos.empty:
+                    usuario_sel = None
+                else:
+                    usuario_sel = st.selectbox("Cuenta", usuarios_activos["usuario_id"],
+                                                label_visibility="collapsed",
+                                                help=usuarios.ETIQUETA_CUENTA_GENERICA)
+
+            password = st.text_input("Contraseña", type="password", placeholder="Contraseña",
+                                      label_visibility="collapsed")
+            enviado = st.form_submit_button("Entrar", type="primary", width='stretch')
+
+            if enviado:
+                if rol_sel == "Manager" and usuario_sel is None:
+                    st.error("Las 3 cuentas de esta tienda están desactivadas. Contacta a HQ para reactivar alguna.")
+                elif password != usuarios.password_login():
+                    st.error("Contraseña incorrecta.")
+                elif rol_sel == "Manager":
+                    st.session_state["auth"] = {
+                        "rol": "manager", "tienda_id": tienda_sel, "usuario_id": usuario_sel,
+                        "nombre": f"{tienda_sel} · {usuario_sel}",
+                    }
+                    st.rerun()
+                elif rol_sel == "Admin":
+                    st.session_state["auth"] = {"rol": "admin", "tienda_id": None,
+                                                 "usuario_id": "ADMIN", "nombre": "Admin"}
+                    st.rerun()
+                else:
+                    st.session_state["auth"] = {"rol": "super_admin", "tienda_id": None,
+                                                 "usuario_id": "SADMIN", "nombre": "SAdmin"}
+                    st.rerun()
 
 
 if "auth" not in st.session_state:

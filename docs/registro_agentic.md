@@ -111,3 +111,19 @@ un bug real donde `app.py` seguía referenciando columnas viejas
 en producción, atrapado con `AppTest` antes de desplegar), y la ausencia
 de `.gitignore` — sin él, `data/` (150MB de CSV regenerables, incluidas
 las 50 tiendas × 2025-2030) se habría subido al repo público.
+
+## Rediseño del login: contraseña única (21-sep-2026)
+Simplificación pedida por el negocio: "super sencillo, cuadrito en medio
+de la pantalla tipo GitHub" — un solo autenticador con **una contraseña
+compartida** (`3.14159265358`, primeros dígitos de π, elegidos por ser
+un valor público) para los 3 roles (Manager, Admin, SAdmin, nombres
+cortos), en vez de 3 contraseñas distintas. `jornada40/usuarios.py` se
+redujo a una sola función `password_login()`; el rol se sigue eligiendo
+en la misma pantalla y la navegación después del login sigue igual de
+segmentada por rol (Manager solo ve su tienda, Admin/SAdmin ven las 50).
+Verificado con `AppTest` para los 3 roles (contraseña correcta e
+incorrecta) antes de subir. Se documentaron las credenciales en
+README.md y docs/index.md — brecha detectada en la revisión contra el
+PDF: el reviewer no tenía forma de entrar a la app sin esto, lo cual
+hubiera incumplido el Entregable 1 ("debe correr de extremo a extremo
+sin el candidato presente").

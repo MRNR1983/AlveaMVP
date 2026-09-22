@@ -7,6 +7,23 @@ de un autoservicio genérico ("Autoservicio MX", marca ficticia, datos
 de 40 horas, DOF 01-05-2026) y cuantifica en pesos el ahorro frente a
 cómo se programaría hoy.
 
+## Acceso / credenciales de login
+
+La app pide iniciar sesión. Es un autenticador simple de PMV: **una sola
+contraseña compartida** para los 3 roles, elige el rol en la misma
+pantalla de login.
+
+| Rol | Contraseña |
+| --- | --- |
+| Manager (elige tienda y cuenta U1/U2/U3) | `3.14159265358` |
+| Admin | `3.14159265358` |
+| SAdmin (Super Admin — ve todo, puede "ver como" cualquier perfil) | `3.14159265358` |
+
+La contraseña son los primeros dígitos de π, elegidos justo por ser un
+valor público y fácil de compartir con quien revise la herramienta — no es
+un secreto real (ver `jornada40/usuarios.py` para el detalle de seguridad
+aceptado en este PMV).
+
 ## Cómo correrla con Docker
 
 ```bash
