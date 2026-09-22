@@ -1,4 +1,4 @@
-# Jornada40 — Autoservicio MX
+# Alvea PMV — Autoservicio MX
 
 PMV para el reto técnico de ALVENA/AIvena (Head of Product and Technology):
 una herramienta que arma el horario semanal de personal para 50 tiendas
@@ -9,15 +9,24 @@ cómo se programaría hoy.
 
 ## Acceso / credenciales de login
 
-La app pide iniciar sesión. Es un autenticador simple de PMV: **una sola
-contraseña compartida** para los 3 roles, elige el rol en la misma
-pantalla de login.
+La app pide iniciar sesión: usuario + contraseña, como cualquier login
+(no hay que elegir un rol aparte — el nombre de usuario ya dice a qué rol
+y, si aplica, a qué tienda pertenece). La contraseña es la misma para
+todos.
 
-| Rol | Contraseña |
+**Contraseña (para cualquier usuario):** `3.14159265358`
+
+| Usuario | Quién es |
 | --- | --- |
-| Manager (elige tienda y cuenta U1/U2/U3) | `3.14159265358` |
-| Admin | `3.14159265358` |
-| SAdmin (Super Admin — ve todo, puede "ver como" cualquier perfil) | `3.14159265358` |
+| `ADMIN` | Admin / HQ — ve las 50 tiendas y gestiona usuarios |
+| `SADMIN` | Super Admin — ve todo, puede "ver como" cualquier perfil sin volver a loguearse |
+| `T001-U1`, `T001-U2`, `T001-U3` | Gerente de la tienda T001 (cuentas genéricas/flotantes — igual para T002, T003, ... hasta la última tienda del catálogo) |
+
+Las cuentas `<tienda>-U1/U2/U3` no son de una persona fija: son cuentas
+flotantes que el gerente usa solo si las necesita, mientras el alta
+individual de un empleado nuevo aún no está capturada en el sistema, para
+no perder sus horas. Se activan/desactivan desde "Gestión de usuarios"
+(rol Admin o SAdmin).
 
 La contraseña son los primeros dígitos de π, elegidos justo por ser un
 valor público y fácil de compartir con quien revise la herramienta — no es

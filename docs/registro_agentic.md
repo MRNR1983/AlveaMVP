@@ -127,3 +127,29 @@ README.md y docs/index.md — brecha detectada en la revisión contra el
 PDF: el reviewer no tenía forma de entrar a la app sin esto, lo cual
 hubiera incumplido el Entregable 1 ("debe correr de extremo a extremo
 sin el candidato presente").
+
+## Corrección: login por usuario (no por rol elegido) + rebranding (21-sep-2026)
+El negocio corrigió dos cosas del rediseño anterior:
+1. El login NO debe dejar elegir el rol con un selector — el rol lo debe
+   dar el nombre de usuario, como cualquier login real. Se cambió el
+   formulario a usuario + contraseña; `jornada40/usuarios.py` ahora genera
+   un roster completo (`ADMIN`, `SADMIN`, y `<tienda>-U1/U2/U3` por cada
+   tienda) y `buscar_usuario()` resuelve rol y tienda a partir del nombre
+   de usuario. Esto también resuelve, de paso, cómo saber "en qué tienda
+   estoy" como gerente sin un selector aparte (va codificado en el
+   usuario) — Admin/SAdmin no lo necesitan porque ven todo. Se confirmó
+   de nuevo (ya lo estaba, no fue una corrección) que las 3 cuentas por
+   tienda son flotantes/genéricas, de uso opcional del gerente, no
+   cuentas de personas fijas.
+2. Todo el texto de cara al usuario ("Jornada40") se renombró a "Alvea
+   PMV": título de la página, encabezado de la barra lateral, pantalla de
+   login, README, docs/index.md, docs/_config.yml. El nombre interno del
+   paquete Python (`jornada40/`) se dejó igual a propósito — es una
+   referencia de implementación, no algo que el reviewer vea; si se
+   necesita renombrar también el paquete, es un cambio aparte más grande
+   (toca todos los imports) y se puede hacer si se pide explícitamente.
+
+Verificado con `AppTest`: usuario inexistente, contraseña incorrecta,
+ADMIN/SADMIN/T001-U1 correctos, y que Manager no ve "Vista Red" ni
+"Gestión de usuarios". Documentación de acceso actualizada en README.md
+y docs/index.md con el nuevo formato de usuario.

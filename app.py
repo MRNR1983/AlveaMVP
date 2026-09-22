@@ -1,4 +1,4 @@
-"""Interfaz Streamlit del PMV de AIvena/Jornada40 (Autoservicio MX).
+"""Interfaz Streamlit de Alvea PMV — reto técnico de ALVENA/AIvena (Autoservicio MX).
 
 Arranca sin pasos manuales: genera el dataset sintético si no existe y
 calcula bajo demanda (por tienda) el escenario base, la propuesta del
@@ -23,7 +23,7 @@ import streamlit as st
 
 from jornada40 import costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, usuarios, vista_red
 
-st.set_page_config(page_title="Jornada40 — Autoservicio MX", layout="wide")
+st.set_page_config(page_title="Alvea PMV — Autoservicio MX", layout="wide")
 
 DATA_DIR = Path("data")
 RESULTADOS_DIR = DATA_DIR / "resultados"
@@ -146,52 +146,35 @@ div[data-testid="stForm"] {
 </style>
 """
 
-_ROLES_LOGIN = ["Manager", "Admin", "SAdmin"]
-
-
 def _pantalla_login() -> None:
     st.markdown(_CSS_LOGIN, unsafe_allow_html=True)
     _, col_mid, _ = st.columns([1, 1.2, 1])
     with col_mid:
-        st.markdown("### Jornada40")
+        st.markdown("### Alvea PMV")
         with st.form("form_login", border=False):
-            rol_sel = st.radio("Cuenta", _ROLES_LOGIN, horizontal=True, label_visibility="collapsed")
-
-            tienda_sel = usuario_sel = None
-            if rol_sel == "Manager":
-                tienda_sel = st.selectbox("Tienda", tiendas_df["tienda_id"], label_visibility="collapsed")
-                usuarios_tienda = st.session_state.get("usuarios_df", _cargar_usuarios(tiendas_df))
-                usuarios_activos = usuarios_tienda[(usuarios_tienda["tienda_id"] == tienda_sel)
-                                                    & (usuarios_tienda["activo"])]
-                if usuarios_activos.empty:
-                    usuario_sel = None
-                else:
-                    usuario_sel = st.selectbox("Cuenta", usuarios_activos["usuario_id"],
-                                                label_visibility="collapsed",
-                                                help=usuarios.ETIQUETA_CUENTA_GENERICA)
-
+            usuario_txt = st.text_input("Usuario", placeholder="Usuario (ej. ADMIN, SADMIN, T001-U1)",
+                                         label_visibility="collapsed")
             password = st.text_input("Contraseña", type="password", placeholder="Contraseña",
                                       label_visibility="collapsed")
             enviado = st.form_submit_button("Entrar", type="primary", width='stretch')
 
             if enviado:
-                if rol_sel == "Manager" and usuario_sel is None:
-                    st.error("Las 3 cuentas de esta tienda están desactivadas. Contacta a HQ para reactivar alguna.")
+                usuarios_df = st.session_state.get("usuarios_df", _cargar_usuarios(tiendas_df))
+                fila = usuarios.buscar_usuario(usuario_txt, usuarios_df)
+                if fila is None:
+                    st.error("Usuario no encontrado.")
+                elif not fila["activo"]:
+                    st.error("Esta cuenta está desactivada. Contacta a HQ para reactivarla.")
                 elif password != usuarios.password_login():
                     st.error("Contraseña incorrecta.")
-                elif rol_sel == "Manager":
-                    st.session_state["auth"] = {
-                        "rol": "manager", "tienda_id": tienda_sel, "usuario_id": usuario_sel,
-                        "nombre": f"{tienda_sel} · {usuario_sel}",
-                    }
-                    st.rerun()
-                elif rol_sel == "Admin":
-                    st.session_state["auth"] = {"rol": "admin", "tienda_id": None,
-                                                 "usuario_id": "ADMIN", "nombre": "Admin"}
-                    st.rerun()
                 else:
-                    st.session_state["auth"] = {"rol": "super_admin", "tienda_id": None,
-                                                 "usuario_id": "SADMIN", "nombre": "SAdmin"}
+                    nombre = {"admin": "Admin", "super_admin": "SAdmin"}.get(
+                        fila["rol"], f"{fila['tienda_id']} · {fila['usuario_id']}"
+                    )
+                    st.session_state["auth"] = {
+                        "rol": fila["rol"], "tienda_id": fila["tienda_id"],
+                        "usuario_id": fila["usuario_id"], "nombre": nombre,
+                    }
                     st.rerun()
 
 
@@ -202,7 +185,7 @@ if "auth" not in st.session_state:
 auth_real = st.session_state["auth"]
 st.session_state.setdefault("usuarios_df", _cargar_usuarios(tiendas_df))
 
-st.sidebar.title("Jornada40 — Autoservicio MX")
+st.sidebar.title("Alvea PMV — Autoservicio MX")
 _etiqueta_ambito = {"admin": "Admin/HQ", "super_admin": "Super Admin"}.get(auth_real["rol"], auth_real["tienda_id"])
 st.sidebar.caption(f"👤 {auth_real['nombre']} · {_etiqueta_ambito}")
 if st.sidebar.button("Cerrar sesión"):
@@ -470,27 +453,30 @@ elif pagina == "Refuerzos entre tiendas":
 
 elif pagina == "Gestión de usuarios":
     st.header("Gestión de usuarios por tienda")
-    st.caption("Cada tienda tiene 3 usuarios (U1/U2/U3) como respaldo de acceso. "
-               "Desactiva uno solo si es necesario -- los otros dos siguen pudiendo entrar.")
+    st.caption("Cada tienda tiene 3 cuentas genéricas/flotantes (usuario = tienda-U1/U2/U3) que el "
+               "gerente usa SI LAS NECESITA, mientras el alta individual de alguien nuevo no está "
+               "capturada en el sistema. Desactiva una solo si es necesario -- las otras dos siguen "
+               "pudiendo entrar. ADMIN y SADMIN no se listan aquí (siempre activas).")
     usuarios_df = st.session_state["usuarios_df"]
+    gerentes_df = usuarios_df[usuarios_df["rol"] == "manager"]
     tienda_filtro = st.selectbox("Filtrar por tienda (opcional)",
                                   ["(todas)"] + list(tiendas_df["tienda_id"]))
-    vista = usuarios_df if tienda_filtro == "(todas)" else usuarios_df[usuarios_df["tienda_id"] == tienda_filtro]
+    vista = gerentes_df if tienda_filtro == "(todas)" else gerentes_df[gerentes_df["tienda_id"] == tienda_filtro]
 
     editado = st.data_editor(
-        vista, width='stretch', hide_index=True, disabled=["tienda_id", "usuario_id", "etiqueta"],
+        vista, width='stretch', hide_index=True, disabled=["usuario", "rol", "tienda_id", "usuario_id", "etiqueta"],
         column_config={"activo": st.column_config.CheckboxColumn("Activo")},
         key="editor_usuarios",
     )
     if st.button("Guardar cambios de acceso", type="primary"):
         usuarios_df.loc[editado.index, "activo"] = editado["activo"]
         st.session_state["usuarios_df"] = usuarios_df
-        st.success("Actualizado. Los usuarios desactivados ya no podrán iniciar sesión.")
+        st.success("Actualizado. Las cuentas desactivadas ya no podrán iniciar sesión.")
 
-    sin_acceso = usuarios_df.groupby("tienda_id")["activo"].any()
+    sin_acceso = gerentes_df.groupby("tienda_id")["activo"].any()
     tiendas_sin_acceso = sin_acceso[~sin_acceso].index.tolist()
     if tiendas_sin_acceso:
-        st.error(f"⚠️ Tiendas sin ningún usuario activo (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
+        st.error(f"⚠️ Tiendas sin ninguna cuenta de gerente activa (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
 
 elif pagina == "Configuración de reglas":
     st.header("Configuración de reglas legales por vigencia")
