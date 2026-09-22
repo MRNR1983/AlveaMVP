@@ -37,6 +37,16 @@ from datetime import date, timedelta
 # automáticamente para cualquier año futuro.
 
 VIGENCIAS: list[dict] = [
+    # Año base pre-reforma (2025, decisión de producto 21-sep-2026: usarlo
+    # como punto de partida porque ya cerró y hay más información real de
+    # ese año para calibrar). El Decreto DOF 01-05-2026 no modificó nada de
+    # esto retroactivamente, así que 2025 hereda los MISMOS valores con los
+    # que arranca el régimen reformado en 2026 (el primer año de la reforma
+    # tampoco bajó horas, solo empezó a contar la reducción escalonada desde
+    # 2027). Es una CONVENCIÓN DEL PMV, no un hecho verificado contra un
+    # texto legal vigente en 2025 -- ver reglas_README.md.
+    {"regla": "jornada_ordinaria_semanal_horas", "desde": 2025, "valor": 48},
+
     # Jornada ordinaria semanal (art. 58 reformado + Transitorio Segundo):
     # reducción escalonada 2026→2030, congelada en 40 desde 2031 salvo nueva fila.
     {"regla": "jornada_ordinaria_semanal_horas", "desde": 2026, "valor": 48},
@@ -45,16 +55,19 @@ VIGENCIAS: list[dict] = [
     {"regla": "jornada_ordinaria_semanal_horas", "desde": 2029, "valor": 42},
     {"regla": "jornada_ordinaria_semanal_horas", "desde": 2030, "valor": 40},
 
-    # Jornada diaria máxima (art. 61), vigente desde 2026 sin cambios por año.
+    # Jornada diaria máxima (art. 61). Extendida a 2025 (ver nota de año
+    # base arriba); sin cambios por año en ningún caso.
     # Se modela como tres reglas escalares porque regla_vigente() regresa
     # un único número; el optimizador las consulta por tipo de jornada.
-    {"regla": "jornada_diaria_max_horas_diurna", "desde": 2026, "valor": 8},
-    {"regla": "jornada_diaria_max_horas_nocturna", "desde": 2026, "valor": 7},
-    {"regla": "jornada_diaria_max_horas_mixta", "desde": 2026, "valor": 7.5},
+    {"regla": "jornada_diaria_max_horas_diurna", "desde": 2025, "valor": 8},
+    {"regla": "jornada_diaria_max_horas_nocturna", "desde": 2025, "valor": 7},
+    {"regla": "jornada_diaria_max_horas_mixta", "desde": 2025, "valor": 7.5},
 
     # Tope de tiempo extra al doble, semanal (art. 66 reformado +
     # Transitorio Cuarto): amplía el tramo al doble 2026→2030, hereda 12
-    # desde 2031 salvo nueva fila.
+    # desde 2031 salvo nueva fila. 2025 hereda el mismo valor con el que
+    # arranca 2026 (ver nota de año base arriba).
+    {"regla": "extra_tope_doble_semanal_horas", "desde": 2025, "valor": 9},
     {"regla": "extra_tope_doble_semanal_horas", "desde": 2026, "valor": 9},
     {"regla": "extra_tope_doble_semanal_horas", "desde": 2027, "valor": 9},
     {"regla": "extra_tope_doble_semanal_horas", "desde": 2028, "valor": 10},
@@ -62,7 +75,7 @@ VIGENCIAS: list[dict] = [
     {"regla": "extra_tope_doble_semanal_horas", "desde": 2030, "valor": 12},
 
     # Máximo de días a la semana en que puede haber tiempo extra (art. 66).
-    {"regla": "extra_tope_doble_dias_max_semana", "desde": 2026, "valor": 4},
+    {"regla": "extra_tope_doble_dias_max_semana", "desde": 2025, "valor": 4},
 
     # Tiempo extra al triple, semanal: horas adicionales por encima del
     # tope al doble (art. 68).
@@ -80,29 +93,30 @@ VIGENCIAS: list[dict] = [
     # modelar el tramo al triple y NO sustituye asesoría legal: la frase
     # exacta y los límites finales del segundo párrafo del art. 68
     # reformado deben validarse contra el texto publicado en el DOF.
+    {"regla": "extra_tope_triple_semanal_horas", "desde": 2025, "valor": 4},
     {"regla": "extra_tope_triple_semanal_horas", "desde": 2026, "valor": 4},
 
     # Jornada diaria total máxima: ordinaria + extraordinaria (art. 68,
     # último párrafo: la jornada diaria no podrá exceder de doce horas).
-    {"regla": "jornada_diaria_total_max_horas", "desde": 2026, "valor": 12},
+    {"regla": "jornada_diaria_total_max_horas", "desde": 2025, "valor": 12},
 
     # Por cada 6 días de trabajo, 1 de descanso con salario íntegro (art. 69).
-    {"regla": "dias_trabajo_maximo_antes_descanso", "desde": 2026, "valor": 6},
+    {"regla": "dias_trabajo_maximo_antes_descanso", "desde": 2025, "valor": 6},
 
     # Prima dominical: 25% sobre el salario diario (art. 71, 2o. párrafo).
-    {"regla": "prima_dominical_pct", "desde": 2026, "valor": 0.25},
+    {"regla": "prima_dominical_pct", "desde": 2025, "valor": 0.25},
 
     # Multiplicadores de pago.
-    {"regla": "pago_extra_doble_multiplicador", "desde": 2026, "valor": 2.0},   # art. 66
-    {"regla": "pago_extra_triple_multiplicador", "desde": 2026, "valor": 3.0},  # art. 68
+    {"regla": "pago_extra_doble_multiplicador", "desde": 2025, "valor": 2.0},   # art. 66
+    {"regla": "pago_extra_triple_multiplicador", "desde": 2025, "valor": 3.0},  # art. 68
     # Día de descanso trabajado: 2x además del salario del descanso (art. 73).
-    {"regla": "pago_dia_descanso_trabajado_multiplicador", "desde": 2026, "valor": 2.0},
+    {"regla": "pago_dia_descanso_trabajado_multiplicador", "desde": 2025, "valor": 2.0},
     # Día festivo trabajado: 2x además del salario del descanso obligatorio
     # (art. 75) → costo total efectivo de 3x ese día (1 propio + 2 extra).
-    {"regla": "pago_dia_festivo_trabajado_multiplicador", "desde": 2026, "valor": 2.0},
+    {"regla": "pago_dia_festivo_trabajado_multiplicador", "desde": 2025, "valor": 2.0},
 
     # Descanso intrajornada: media hora cuando la jornada es continua (art. 63).
-    {"regla": "descanso_intrajornada_minutos", "desde": 2026, "valor": 30},
+    {"regla": "descanso_intrajornada_minutos", "desde": 2025, "valor": 30},
 ]
 
 # Regla jornada_diaria_max_horas del enunciado, desagregada por tipo de
@@ -127,8 +141,8 @@ def regla_vigente(nombre_regla: str, fecha: date) -> float | int:
 
     Raises:
         ValueError: si la regla no existe o no hay ninguna fila con
-            "desde" <= año de la fecha (p. ej., consultar 2025, antes de
-            la entrada en vigor del Decreto).
+            "desde" <= año de la fecha (p. ej., consultar 2020, antes del
+            año base que modela el PMV -- ver nota de año base en VIGENCIAS).
     """
     anio = fecha.year
     candidatas = [f for f in VIGENCIAS

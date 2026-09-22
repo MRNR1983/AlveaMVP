@@ -186,16 +186,81 @@ div[data-testid="stForm"] {
 </style>
 """
 
-# Cuadrícula de días tipo "tabla periódica": celdas cuadradas y compactas en
-# vez de los botones anchos por defecto de Streamlit. Solo cosmético -- el
-# comportamiento (clic = navegar a la semana) es el mismo botón de siempre.
+# Cuadrícula de días estilo Apple Calendar: celdas cuadradas, blancas, con
+# borde gris fino y números alineados -- reemplaza el look "botón" plano de
+# Streamlit por defecto. Los selectores usan la clase `st-key-<key>` que
+# Streamlit agrega desde 1.3x, así que cada tipo de botón (día del mes,
+# flechas de navegación, "Ver día") se puede estilizar por separado sin
+# tocar los demás widgets de la página. Solo cosmético -- el comportamiento
+# (clic = navegar) es el mismo botón de siempre.
 _CSS_CALENDARIO = """
 <style>
-div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+/* celdas del mes (cal_dia_YYYY-MM-DD) */
+div[class*="st-key-cal_dia_"] button {
     aspect-ratio: 1;
-    min-height: 2.6rem;
-    padding: 0.15rem;
-    font-size: 0.85rem;
+    width: 100%;
+    min-height: 3.4rem;
+    background: #ffffff;
+    border: 1px solid #d2d2d7;
+    border-radius: 10px;
+    color: #1d1d1f;
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1.25;
+    white-space: pre-line;
+    box-shadow: none;
+    transition: border-color .12s ease, background .12s ease;
+}
+div[class*="st-key-cal_dia_"] button:hover:not(:disabled) {
+    border-color: #0071e3;
+    background: #f5f9ff;
+}
+div[class*="st-key-cal_dia_"] button:disabled {
+    background: #fbfbfd;
+    border-color: #ececec;
+    color: #c7c7cc;
+}
+/* celda vacía de relleno (antes / después del mes) */
+.cal-celda-vacia {
+    aspect-ratio: 1;
+    min-height: 3.4rem;
+    border-radius: 10px;
+    background: transparent;
+}
+/* encabezado Dom/Lun/Mar... */
+.cal-encabezado-dia {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #86868b;
+    padding-bottom: 0.35rem;
+}
+/* flechas de navegación de mes (redondas, discretas) */
+div[class*="st-key-cal_mes_prev"] button, div[class*="st-key-cal_mes_next"] button {
+    border-radius: 999px;
+    border: 1px solid #d2d2d7;
+    background: #ffffff;
+    color: #1d1d1f;
+    font-weight: 500;
+}
+div[class*="st-key-cal_mes_prev"] button:hover, div[class*="st-key-cal_mes_next"] button:hover {
+    border-color: #0071e3;
+    color: #0071e3;
+}
+/* botón "Ver día" dentro de la tarjeta de semana */
+div[class*="st-key-cal_verdia_"] button {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid #d2d2d7;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    font-size: 0.82rem;
+}
+div[class*="st-key-cal_verdia_"] button:hover {
+    border-color: #0071e3;
+    color: #0071e3;
 }
 </style>
 """
@@ -301,7 +366,7 @@ pagina = st.sidebar.radio(
     "Ir a", paginas_negocio,
     format_func=lambda p: etiqueta_datos if p == "Cargar datos" else p,
 )
-anio = st.sidebar.selectbox("Año (régimen legal)", [2026, 2027, 2028, 2029, 2030], index=1)
+anio = st.sidebar.selectbox("Año (régimen legal)", [2025, 2026, 2027, 2028, 2029, 2030], index=2)
 
 st.sidebar.divider()
 modo_avanzado = st.sidebar.toggle("Modo avanzado", value=False)
@@ -496,33 +561,58 @@ elif pagina == "Calendario":
     cal_anio, cal_mes = st.session_state["cal_anio"], st.session_state["cal_mes"]
     semanas_calculadas = {clave for clave in st.session_state["cache_calendario"] if clave[0] == tienda_id}
 
+    # Selector Mes/Semana/Día -- estilo Google Calendar: siempre visible, no
+    # solo llegable "drilling down". La key incluye el valor actual de
+    # cal_vista a propósito: así cuando OTRO control (clic en un día, botón
+    # "Ver día") cambia cal_vista y hace un rerun, este widget siempre nace
+    # con el `default` correcto en vez de arrastrar un estado de clic viejo.
+    _VISTA_LABEL = {"mes": "Mes", "semana": "Semana", "dia": "Día"}
+    _VISTA_DESDE_LABEL = {v: k for k, v in _VISTA_LABEL.items()}
+    vista_click = st.segmented_control(
+        "Vista", list(_VISTA_LABEL.values()), default=_VISTA_LABEL[st.session_state["cal_vista"]],
+        key=f"cal_vista_seg_{st.session_state['cal_vista']}", label_visibility="collapsed",
+    )
+    if vista_click is not None and _VISTA_DESDE_LABEL[vista_click] != st.session_state["cal_vista"]:
+        nueva_vista = _VISTA_DESDE_LABEL[vista_click]
+        if "cal_semana_sel" not in st.session_state:
+            dias_del_mes = [f for fila in calendario.matriz_mes(cal_anio, cal_mes) for f in fila if f]
+            candidata = next(
+                (f for f in dias_del_mes
+                 if calendario.semana_dentro_de_rango(calendario.semana_de(f)[0], FECHA_MIN_CAL, FECHA_MAX_CAL)),
+                None,
+            )
+            st.session_state["cal_semana_sel"] = calendario.semana_de(candidata)[0] if candidata else FECHA_MIN_CAL
+        st.session_state.setdefault("cal_dia_sel", st.session_state["cal_semana_sel"])
+        st.session_state["cal_vista"] = nueva_vista
+        st.rerun()
+
     if st.session_state["cal_vista"] == "mes":
         nav1, nav2, nav3 = st.columns([1, 4, 1])
-        if nav1.button("◀ Mes", key="cal_mes_prev"):
+        if nav1.button("◀", key="cal_mes_prev"):
             st.session_state["cal_anio"], st.session_state["cal_mes"] = calendario.mes_anterior(cal_anio, cal_mes)
             st.rerun()
-        nav2.markdown(f"<h4 style='text-align:center'>{calendario.NOMBRES_MES[cal_mes]} {cal_anio}</h4>",
-                       unsafe_allow_html=True)
-        if nav3.button("Mes ▶", key="cal_mes_next"):
+        nav2.markdown(f"<h4 style='text-align:center;font-weight:600;color:#1d1d1f'>"
+                       f"{calendario.NOMBRES_MES[cal_mes]} {cal_anio}</h4>", unsafe_allow_html=True)
+        if nav3.button("▶", key="cal_mes_next"):
             st.session_state["cal_anio"], st.session_state["cal_mes"] = calendario.mes_siguiente(cal_anio, cal_mes)
             st.rerun()
 
         encabezados = st.columns(7)
         for col, nombre in zip(encabezados, calendario.DIAS_SEMANA_ABREV):
-            col.markdown(f"<div style='text-align:center;font-weight:600'>{nombre}</div>", unsafe_allow_html=True)
+            col.markdown(f"<div class='cal-encabezado-dia'>{nombre}</div>", unsafe_allow_html=True)
 
         for fila in calendario.matriz_mes(cal_anio, cal_mes):
             cols = st.columns(7)
             for col, fecha in zip(cols, fila):
                 if fecha is None:
-                    col.markdown("&nbsp;")
+                    col.markdown("<div class='cal-celda-vacia'></div>", unsafe_allow_html=True)
                     continue
                 resumen = calendario.resumen_dia(fecha, tienda_id, FECHA_MIN_CAL, FECHA_MAX_CAL, semanas_calculadas)
                 if not resumen["dentro_de_rango"]:
                     col.button(str(fecha.day), key=f"cal_dia_{fecha.isoformat()}", disabled=True)
                     continue
-                emoji = "🟢" if resumen["calculado"] else "🔵"
-                if col.button(f"{emoji}\n{fecha.day}", key=f"cal_dia_{fecha.isoformat()}"):
+                punto = "🟢" if resumen["calculado"] else "🔵"
+                if col.button(f"{fecha.day}\n{punto}", key=f"cal_dia_{fecha.isoformat()}"):
                     st.session_state["cal_vista"] = "semana"
                     st.session_state["cal_semana_sel"] = resumen["semana_inicio"]
                     st.rerun()
@@ -532,27 +622,27 @@ elif pagina == "Calendario":
     elif st.session_state["cal_vista"] == "semana":
         semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
         semana_fin = semana_inicio + timedelta(days=6)
-        if st.button("◀ Volver al mes"):
-            st.session_state["cal_vista"] = "mes"
-            st.rerun()
-        st.subheader(f"Semana del {semana_inicio:%d-%b-%Y} al {semana_fin:%d-%b-%Y}")
+        st.markdown(f"<p style='color:#86868b;font-size:0.85rem;margin-bottom:0'>"
+                    f"{calendario.NOMBRES_MES[cal_mes]} {cal_anio}</p>", unsafe_allow_html=True)
+        st.subheader(f"Semana del {semana_inicio:%d-%b} al {semana_fin:%d-%b-%Y}")
 
         clave = (tienda_id, semana_inicio)
         if not calendario.semana_dentro_de_rango(semana_inicio, FECHA_MIN_CAL, FECHA_MAX_CAL):
             st.warning("Esta semana queda fuera del año con datos de ejemplo (1-ene a 31-dic de "
                        f"{FECHA_MIN_CAL.year}).")
         elif clave not in st.session_state["cache_calendario"]:
-            st.info("Esta semana todavía no se ha calculado (el mes es navegación gratis; el "
-                     "cálculo real de horario y ahorro se dispara semana por semana).")
-            if st.button("Calcular esta semana", type="primary"):
-                with st.spinner("Calculando horario base, propuesta del optimizador y techo teórico..."):
-                    reporte = calcular_resultado_tienda(
-                        tienda_id, anio, TIEMPO_LIMITE_SEG_DEFAULT,
-                        datos["tiendas"], datos["trafico"], datos["ventas"], datos["plantilla"], datos["ausentismo"],
-                        fecha_inicio=semana_inicio,
-                    )
-                    st.session_state["cache_calendario"][clave] = reporte
-                st.rerun()
+            with st.container(border=True):
+                st.write("Esta semana todavía no se ha calculado (el mes es navegación gratis; el "
+                         "cálculo real de horario y ahorro se dispara semana por semana).")
+                if st.button("Calcular esta semana", type="primary"):
+                    with st.spinner("Calculando horario base, propuesta del optimizador y techo teórico..."):
+                        reporte = calcular_resultado_tienda(
+                            tienda_id, anio, TIEMPO_LIMITE_SEG_DEFAULT,
+                            datos["tiendas"], datos["trafico"], datos["ventas"], datos["plantilla"],
+                            datos["ausentismo"], fecha_inicio=semana_inicio,
+                        )
+                        st.session_state["cache_calendario"][clave] = reporte
+                    st.rerun()
         else:
             reporte = st.session_state["cache_calendario"][clave]
             st.write(reporte["resumen_ejecutivo"])
@@ -566,28 +656,39 @@ elif pagina == "Calendario":
             dia_cols = st.columns(7)
             for i, dcol in enumerate(dia_cols):
                 fecha_d = semana_inicio + timedelta(days=i)
-                dcol.markdown(f"**{calendario.DIAS_SEMANA_ABREV[i]}**\n{fecha_d.day}")
-                if not horario_df.empty:
-                    horas_dia = horario_df[pd.to_datetime(horario_df["fecha"]).dt.date == fecha_d]
-                    dcol.caption(f"{horas_dia['empleado_id'].nunique()} personas")
-                if dcol.button("Ver día", key=f"cal_verdia_{fecha_d.isoformat()}"):
-                    st.session_state["cal_vista"] = "dia"
-                    st.session_state["cal_dia_sel"] = fecha_d
-                    st.rerun()
+                with dcol.container(border=True):
+                    st.markdown(
+                        f"<div style='text-align:center'>"
+                        f"<span style='font-size:0.7rem;font-weight:600;letter-spacing:.04em;"
+                        f"text-transform:uppercase;color:#86868b'>{calendario.DIAS_SEMANA_ABREV[i]}</span><br>"
+                        f"<span style='font-size:1.4rem;font-weight:600;color:#1d1d1f'>{fecha_d.day}</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                    n_personas = 0
+                    if not horario_df.empty:
+                        horas_dia = horario_df[pd.to_datetime(horario_df["fecha"]).dt.date == fecha_d]
+                        n_personas = horas_dia["empleado_id"].nunique()
+                    st.markdown(f"<p style='text-align:center;color:#86868b;font-size:0.78rem;margin:0.2rem 0'>"
+                                f"{n_personas} personas</p>", unsafe_allow_html=True)
+                    if st.button("Ver día", key=f"cal_verdia_{fecha_d.isoformat()}", width='stretch'):
+                        st.session_state["cal_vista"] = "dia"
+                        st.session_state["cal_dia_sel"] = fecha_d
+                        st.rerun()
 
     else:  # vista == "dia"
         semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
         fecha_d = st.session_state.get("cal_dia_sel", semana_inicio)
-        if st.button("◀ Volver a la semana"):
-            st.session_state["cal_vista"] = "semana"
-            st.rerun()
         nombre_dia = calendario.DIAS_SEMANA_ABREV[(fecha_d.weekday() + 1) % 7]
-        st.subheader(f"{nombre_dia} {fecha_d:%d-%b-%Y}")
+        st.markdown(f"<p style='color:#86868b;font-size:0.85rem;margin-bottom:0'>"
+                    f"Semana del {semana_inicio:%d-%b} al {(semana_inicio + timedelta(days=6)):%d-%b-%Y}</p>",
+                    unsafe_allow_html=True)
+        st.subheader(f"{nombre_dia} {fecha_d:%d de %B, %Y}")
 
         clave = (tienda_id, semana_inicio)
         reporte = st.session_state.get("cache_calendario", {}).get(clave)
         if reporte is None:
-            st.warning("Primero calcula la semana completa (botón en la vista de semana).")
+            st.warning("Primero calcula la semana completa (cambia a la vista Semana y usa el botón "
+                       "\"Calcular esta semana\").")
         else:
             horario_df = reporte["propuesta"]["horario_df"]
             plantilla_t = datos["plantilla"].loc[datos["plantilla"]["tienda_id"] == tienda_id]
@@ -600,7 +701,9 @@ elif pagina == "Calendario":
             # intercambiar dos chips -- el CP-SAT ya encontró el óptimo legal,
             # así que cualquier edición manual solo puede alejarse de él; por
             # eso se califica con costos_ahorro.calificar_edicion_manual en
-            # vez de resolverse como un problema nuevo.
+            # vez de resolverse como un problema nuevo. No hay arrastrar-y-soltar
+            # real (Streamlit no lo soporta de forma nativa): "mover" un turno
+            # es reasignarlo con el selector de la derecha de cada chip.
             if horario_dia.empty:
                 st.info("Nadie tiene turno asignado este día en la propuesta.")
             else:
@@ -609,7 +712,7 @@ elif pagina == "Calendario":
                 chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
                 chips = chips.sort_values("hora_inicio").reset_index(drop=True)
 
-                st.write(f"**{len(chips)} turnos ({nombre_dia})**")
+                st.write(f"**{len(chips)} turnos**")
                 empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
                 clave_edicion = (tienda_id, fecha_d)
                 st.session_state.setdefault("cal_ediciones", {})
@@ -617,18 +720,25 @@ elif pagina == "Calendario":
 
                 for _, chip in chips.iterrows():
                     emp_original = chip["empleado_id"]
-                    ch1, ch2 = st.columns([2, 3])
-                    ch1.markdown(f"🏷️ **{emp_original}** · {int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00")
-                    opciones = [emp_original] + [e for e in empleados_tienda if e != emp_original]
-                    actual = edicion_dia.get(emp_original, emp_original)
-                    nuevo = ch2.selectbox(
-                        "Reasignar a", opciones, index=opciones.index(actual) if actual in opciones else 0,
-                        key=f"cal_chip_{fecha_d.isoformat()}_{emp_original}", label_visibility="collapsed",
-                    )
-                    if nuevo != emp_original:
-                        edicion_dia[emp_original] = nuevo
-                    elif emp_original in edicion_dia:
-                        del edicion_dia[emp_original]
+                    with st.container(border=True):
+                        ch1, ch2 = st.columns([2, 3])
+                        ch1.markdown(
+                            f"<span style='background:#f5f5f7;border-radius:999px;padding:0.2rem 0.7rem;"
+                            f"font-weight:600;font-size:0.88rem;color:#1d1d1f'>{emp_original}</span> "
+                            f"<span style='color:#86868b;font-size:0.85rem'>"
+                            f"{int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00</span>",
+                            unsafe_allow_html=True,
+                        )
+                        opciones = [emp_original] + [e for e in empleados_tienda if e != emp_original]
+                        actual = edicion_dia.get(emp_original, emp_original)
+                        nuevo = ch2.selectbox(
+                            "Reasignar a", opciones, index=opciones.index(actual) if actual in opciones else 0,
+                            key=f"cal_chip_{fecha_d.isoformat()}_{emp_original}", label_visibility="collapsed",
+                        )
+                        if nuevo != emp_original:
+                            edicion_dia[emp_original] = nuevo
+                        elif emp_original in edicion_dia:
+                            del edicion_dia[emp_original]
 
                 if edicion_dia:
                     st.write(f"**{len(edicion_dia)} turno(s) reasignado(s) sin calificar todavía.**")
@@ -676,7 +786,7 @@ elif pagina == "Simulacros":
 
     if modo_avanzado:
         tasa_ausentismo = col1.slider("Tasa de ausentismo", 0.0, 0.30, 0.06, 0.01)
-        anio_regimen = col2.selectbox("Año de régimen (simulacro)", [None, 2026, 2027, 2028, 2029, 2030])
+        anio_regimen = col2.selectbox("Año de régimen (simulacro)", [None, 2025, 2026, 2027, 2028, 2029, 2030])
     else:
         tasa_ausentismo = 0.06
         anio_regimen = None

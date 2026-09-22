@@ -9,14 +9,26 @@ sistema aplica automáticamente la regla correcta según el año que se esté
 programando. Si el Congreso publica una nueva reforma, solo se agrega una
 línea a la tabla; no se toca el programa.
 
+## Año base: 2025
+
+**2025 es el año base del sistema (decisión de producto, 21-sep-2026):** ya
+cerró y hay más información real de ese año para calibrar el modelo. El
+Decreto DOF 01-05-2026 entra en vigor en 2026, así que **no existe una regla
+publicada específicamente para 2025**; el sistema le asigna los MISMOS
+valores con los que arranca el régimen reformado en 2026 (el primer año de
+la reforma tampoco redujo horas — la reducción escalonada empieza a contar
+desde 2027). **Esto es una convención del PMV, no un hecho verificado contra
+un texto legal vigente en 2025**, y debe tratarse igual que las demás
+interpretaciones "pendiente de validación legal" de este documento.
+
 ## Reglas vigentes (Decreto DOF 01-05-2026, reforma a la LFT)
 
-| Regla | 2026 | 2027 | 2028 | 2029 | 2030 en adelante |
-|---|---|---|---|---|---|
-| Jornada ordinaria semanal (horas) | 48 | 46 | 44 | 42 | 40 |
-| Tope semanal de tiempo extra al doble (horas) | 9 | 9 | 10 | 11 | 12 |
+| Regla | 2025 (base) | 2026 | 2027 | 2028 | 2029 | 2030 en adelante |
+|---|---|---|---|---|---|---|
+| Jornada ordinaria semanal (horas) | 48 | 48 | 46 | 44 | 42 | 40 |
+| Tope semanal de tiempo extra al doble (horas) | 9 | 9 | 9 | 10 | 11 | 12 |
 
-Reglas que no cambian por año (vigentes desde 2026):
+Reglas que no cambian por año (vigentes desde 2025):
 
 - **Jornada diaria máxima (art. 61):** 8 h diurna, 7 h nocturna, 7.5 h mixta.
 - **Días con tiempo extra por semana (art. 66):** máximo 4 días a la semana.
@@ -52,6 +64,9 @@ reformado y su interacción con el tope diario de 12 horas.
 
 ## Qué falta validar legalmente
 
+- **PENDIENTE DE VALIDACIÓN LEGAL:** 2025 como año base (ver sección de
+  arriba) — la convención de heredar los valores de 2026 hacia atrás no
+  está respaldada por un texto legal vigente en 2025.
 - **PENDIENTE DE VALIDACIÓN LEGAL:** tramo al triple de 4 h/semana
   (interpretación descrita arriba).
 - **PENDIENTE DE VALIDACIÓN LEGAL:** topes finales del art. 68 reformado

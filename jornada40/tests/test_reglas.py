@@ -44,9 +44,20 @@ class TestReglaVigente:
     def test_regla_constante(self):
         assert regla_vigente("prima_dominical_pct", date(2030, 12, 31)) == 0.25
 
+    def test_2025_anio_base_pre_reforma(self):
+        # Decisión de producto 21-sep-2026: 2025 es el año base (ya cerrado,
+        # hay más información real de ese año), hereda los mismos valores
+        # con los que arranca el régimen reformado en 2026.
+        assert regla_vigente("jornada_ordinaria_semanal_horas",
+                             date(2025, 6, 1)) == 48
+        assert regla_vigente("extra_tope_doble_semanal_horas",
+                             date(2025, 6, 1)) == 9
+
     def test_pre_vigencia_lanza_valueerror(self):
+        # 2025 es ahora el año base del PMV (ver test de arriba); un año
+        # anterior sigue sin tener fila y debe seguir lanzando el error.
         with pytest.raises(ValueError):
-            regla_vigente("jornada_ordinaria_semanal_horas", date(2025, 1, 1))
+            regla_vigente("jornada_ordinaria_semanal_horas", date(2020, 1, 1))
 
     def test_regla_inexistente_lanza_valueerror(self):
         with pytest.raises(ValueError):
