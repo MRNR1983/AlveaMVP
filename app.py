@@ -182,6 +182,46 @@ def _cargar_usuarios(_tiendas: pd.DataFrame, _version: int = _ESQUEMA_USUARIOS_V
     return usuarios.generar_usuarios(_tiendas, seed=42)
 
 
+# El flag "activo" (Gestión de usuarios) vivía SOLO en st.session_state, que
+# en Streamlit es por-sesión-de-navegador: un admin que desactivaba a un
+# gerente no bloqueaba nada para nadie más -- cualquier otra sesión (incluida
+# la del propio gerente "desactivado") seguía viendo el dataset base con
+# activo=True. Se persiste ahora en disco (compartido por todo el proceso,
+# no por sesión) y se recarga en CADA rerun, no solo la primera vez.
+_RUTA_ESTADO_USUARIOS = DATA_DIR / "usuarios_estado.csv"
+
+
+def _cargar_estado_usuarios() -> dict[str, bool]:
+    if not _RUTA_ESTADO_USUARIOS.exists():
+        return {}
+    try:
+        estado = pd.read_csv(_RUTA_ESTADO_USUARIOS)
+        return dict(zip(estado["usuario"], estado["activo"]))
+    except Exception:
+        return {}
+
+
+def _guardar_estado_usuarios(usuarios_df: pd.DataFrame) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    usuarios_df[["usuario", "activo"]].to_csv(_RUTA_ESTADO_USUARIOS, index=False)
+
+
+def _usuarios_con_estado(_tiendas: pd.DataFrame) -> pd.DataFrame:
+    """Base de usuarios + overrides de 'activo' persistidos en disco.
+
+    No está cacheada (la lectura del CSV es barata) para que un cambio
+    guardado por CUALQUIER sesión/usuario se vea de inmediato en el
+    siguiente rerun de todas las demás -- incluida la pantalla de login.
+    """
+    base = _cargar_usuarios(_tiendas).copy()
+    overrides = _cargar_estado_usuarios()
+    if overrides:
+        base["activo"] = base.apply(
+            lambda fila: overrides.get(fila["usuario"], fila["activo"]), axis=1,
+        )
+    return base
+
+
 _CSS_LOGIN = """
 <style>
 div[data-testid="stForm"] {
@@ -295,7 +335,10 @@ def _pantalla_login() -> None:
             enviado = st.form_submit_button("Entrar", type="primary", width='stretch')
 
             if enviado:
-                usuarios_df = st.session_state.get("usuarios_df", _cargar_usuarios(tiendas_df))
+                # Siempre se lee el estado persistido en disco (no
+                # session_state): una cuenta desactivada por un admin en
+                # OTRA sesión debe bloquear el login aquí también.
+                usuarios_df = _usuarios_con_estado(tiendas_df)
                 fila = usuarios.buscar_usuario(usuario_txt, usuarios_df)
                 if fila is None:
                     st.error("Usuario no encontrado.")
@@ -322,7 +365,19 @@ if "auth" not in st.session_state:
     st.stop()
 
 auth_real = st.session_state["auth"]
-st.session_state.setdefault("usuarios_df", _cargar_usuarios(tiendas_df))
+# Se recarga en cada rerun (no setdefault) para reflejar de inmediato
+# cambios de acceso guardados por otra sesión/admin -- ver
+# _usuarios_con_estado.
+st.session_state["usuarios_df"] = _usuarios_con_estado(tiendas_df)
+
+# Si a la cuenta YA logueada la desactivó otro admin a mitad de sesión, se
+# cierra la sesión aquí mismo -- si solo bloqueáramos el login, alguien ya
+# adentro seguiría operando hasta que cerrara el navegador.
+_fila_actual = usuarios.buscar_usuario(auth_real["usuario"], st.session_state["usuarios_df"])
+if _fila_actual is None or not _fila_actual["activo"]:
+    del st.session_state["auth"]
+    st.error("Esta cuenta fue desactivada. Contacta a HQ para reactivarla.")
+    st.stop()
 
 def _tiendas_visibles(auth_: dict, tiendas: pd.DataFrame) -> pd.DataFrame:
     """Subconjunto de tiendas que puede ver/operar este perfil: su tienda
@@ -500,7 +555,13 @@ st.sidebar.divider()
 anio = st.sidebar.selectbox("Año (régimen legal)", [2025, 2026, 2027, 2028, 2029, 2030], index=2)
 
 st.sidebar.divider()
-modo_avanzado = st.sidebar.toggle("Modo avanzado", value=False)
+# Solo admin/super_admin: "Modo avanzado" da acceso a páginas internas
+# (Configuración de reglas, Guion de demo) y al slider que reduce cuántas
+# tiendas calcula Vista Red -- un Manager no necesita ni debería verlas.
+if auth_real["rol"] in ("admin", "super_admin"):
+    modo_avanzado = st.sidebar.toggle("Modo avanzado", value=False)
+else:
+    modo_avanzado = False
 if modo_avanzado:
     pagina_tecnica = st.sidebar.selectbox(
         "Página interna", ["(ninguna)", "Configuración de reglas", "Guion de demo"]
@@ -520,24 +581,41 @@ if pagina == "Cargar datos":
     )
 
     ejemplo = cargar_datos_ejemplo()
+    # Etiquetas cortas para el botón -- el detalle (frecuencia, agrupación)
+    # va en el tooltip (help=), no en el texto del botón. 5 columnas con
+    # etiquetas largas ("Tráfico de clientes (por hora)") se envolvían a
+    # 2-3 líneas y, en la primera pintada de la página, se veían
+    # sobrepuestas con el subheader de arriba mientras Streamlit terminaba
+    # de calcular el alto de cada columna.
     etiquetas = {
         "tiendas": "Catálogo de tiendas",
-        "trafico": "Tráfico de clientes (por hora)",
-        "ventas": "Ventas históricas (por hora)",
-        "plantilla": "Plantilla actual (empleados)",
-        "ausentismo": "Ausentismo (por empleado y día)",
+        "trafico": "Tráfico de clientes",
+        "ventas": "Ventas históricas",
+        "plantilla": "Plantilla actual",
+        "ausentismo": "Ausentismo",
+    }
+    ayuda = {
+        "tiendas": "Catálogo de tiendas. Columnas: {cols}",
+        "trafico": "Tráfico de clientes, por hora. Columnas: {cols}",
+        "ventas": "Ventas históricas, por hora. Columnas: {cols}",
+        "plantilla": "Plantilla actual de empleados. Columnas: {cols}",
+        "ausentismo": "Ausentismo, por empleado y día. Columnas: {cols}",
     }
 
     st.subheader("1. Descarga la plantilla (formato esperado)")
-    cols_plantillas = st.columns(len(ARCHIVOS_DATASET))
-    for col, nombre in zip(cols_plantillas, ARCHIVOS_DATASET):
+    # 3 columnas (no 5): con etiquetas cortas ya no se envuelven, y con
+    # menos columnas cada botón tiene más aire -- se ve bien tanto en
+    # pantalla completa como en laptop chica.
+    cols_plantillas = st.columns(3)
+    for i, nombre in enumerate(ARCHIVOS_DATASET):
+        col = cols_plantillas[i % 3]
         col.download_button(
             etiquetas[nombre],
             icon=":material/download:",
             data=ejemplo[nombre].to_csv(index=False).encode("utf-8"),
             file_name=f"{nombre}_ejemplo.csv",
             mime="text/csv",
-            help=f"Columnas: {', '.join(ejemplo[nombre].columns)}",
+            help=ayuda[nombre].format(cols=", ".join(ejemplo[nombre].columns)),
             width='stretch',
         )
 
@@ -594,13 +672,25 @@ elif pagina == "Vista Red":
         consolidado = vista_red.consolidar_resultados(resultados, tiendas_visibles_df)
         st.session_state["consolidado"] = consolidado
         st.session_state["resultados_red"] = resultados
+        # Fuerza un rerun limpio al terminar -- el cálculo puede tardar
+        # varios minutos en un solo script run; sin este rerun explícito,
+        # cualquier clic en la barra lateral hecho mientras corría queda
+        # en un estado raro y la navegación puede sentirse "congelada"
+        # hasta recargar la página.
+        st.rerun()
 
     if "consolidado" in st.session_state:
         consolidado = st.session_state["consolidado"]
+        # Labels cortos + help= para el detalle -- en anchos intermedios
+        # (~900-1000px, laptop chica o ventana no maximizada) un label largo
+        # como "Ahorro total (MXN/semana)" se truncaba sin forma de ver el
+        # resto ("Ahorro total (MXN/se…").
         c1, c2, c3 = st.columns(3)
-        c1.metric("Ahorro total (MXN/semana)", f"${consolidado['ahorro_total_red_mxn']:,.0f}")
+        c1.metric("Ahorro total", f"${consolidado['ahorro_total_red_mxn']:,.0f}",
+                  help="MXN por semana, suma de todas las tiendas calculadas")
         c2.metric("Ahorro %", f"{consolidado['ahorro_pct_red']:.1%}")
-        c3.metric("Tiendas bajo el mínimo de 8%", len(consolidado["tiendas_bajo_minimo_8pct"]))
+        c3.metric("Bajo el mínimo (8%)", len(consolidado["tiendas_bajo_minimo_8pct"]),
+                  help="Tiendas que no llegan al 8% mínimo de ahorro exigido")
 
         st.text(vista_red.resumen_para_demo(consolidado))
 
@@ -613,6 +703,19 @@ elif pagina == "Vista Red":
             cluster_id=None if cluster_sel == "(todos)" else cluster_sel,
             formato=None if formato_sel == "(todos)" else formato_sel,
         )
+        # El status crudo del solver (CP-SAT/OR-Tools) viene en inglés
+        # ("FEASIBLE", "OPTIMAL"...); se traduce solo para mostrar/exportar,
+        # sin tocar vista_red.py -- el resto de la app está en español.
+        if "status_solver" in filtrado.columns:
+            _status_es = {
+                "OPTIMAL": "Óptimo", "FEASIBLE": "Factible",
+                "INFEASIBLE": "Infactible", "MODEL_INVALID": "Modelo inválido",
+                "UNKNOWN": "Desconocido",
+            }
+            filtrado = filtrado.copy()
+            filtrado["status_solver"] = filtrado["status_solver"].map(
+                lambda s: _status_es.get(s, s)
+            )
         st.bar_chart(filtrado.set_index("tienda_id")["ahorro_pct"])
         st.dataframe(
             filtrado, width='stretch', hide_index=True,
@@ -662,21 +765,32 @@ elif pagina == "Vista Tienda":
         bc1.metric("% del techo capturado", f"{brecha.get('pct_del_techo_capturado', 0):.1%}")
         bc2.metric("Brecha vs. techo (MXN/semana)", f"${brecha.get('brecha_mxn', 0):,.0f}")
 
-        st.write("**Horario propuesto (primeras filas)**")
-        _horario_vista = reporte["propuesta"]["horario_df"].head(50).copy()
-        _plantilla_vista = datos["plantilla"].loc[datos["plantilla"]["tienda_id"] == tienda_id]
-        if "nombre" in _plantilla_vista.columns and "empleado_id" in _horario_vista.columns:
-            _horario_vista.insert(
-                1, "nombre",
-                _horario_vista["empleado_id"].map(dict(zip(_plantilla_vista["empleado_id"], _plantilla_vista["nombre"]))),
+        # La tabla hora-por-hora (fecha/hora/trabajando/en_pausa x cada
+        # empleado) es un nivel de detalle de depuración, no lo que un
+        # gerente consulta a diario -- Calendario ya resuelve mejor el "quién
+        # trabaja hoy" con los chips por turno. Se deja detrás de Modo
+        # avanzado, igual que la tabla de trazabilidad de abajo; el botón de
+        # descarga sigue disponible siempre por si alguien necesita el CSV
+        # completo.
+        if modo_avanzado:
+            st.write("**Horario propuesto (primeras filas, detalle técnico)**")
+            _horario_vista = reporte["propuesta"]["horario_df"].head(50).copy()
+            _plantilla_vista = datos["plantilla"].loc[datos["plantilla"]["tienda_id"] == tienda_id]
+            if "nombre" in _plantilla_vista.columns and "empleado_id" in _horario_vista.columns:
+                _horario_vista.insert(
+                    1, "nombre",
+                    _horario_vista["empleado_id"].map(dict(zip(_plantilla_vista["empleado_id"], _plantilla_vista["nombre"]))),
+                )
+            st.dataframe(
+                _horario_vista, width='stretch', hide_index=True,
+                column_config={
+                    "empleado_id": "ID", "nombre": "Nombre", "fecha": "Fecha", "hora": "Hora",
+                    "trabajando": "Trabajando", "en_pausa": "En pausa",
+                },
             )
-        st.dataframe(
-            _horario_vista, width='stretch', hide_index=True,
-            column_config={
-                "empleado_id": "ID", "nombre": "Nombre", "fecha": "Fecha", "hora": "Hora",
-                "trabajando": "Trabajando", "en_pausa": "En pausa",
-            },
-        )
+        else:
+            st.caption("Para ver quién trabaja cada día, usa Calendario. Aquí puedes descargar el "
+                       "horario completo o activar Modo avanzado para el detalle hora por hora.")
 
         dl1, dl2 = st.columns(2)
         dl1.download_button(
@@ -928,6 +1042,43 @@ elif pagina == "Calendario":
                 empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
                 clave_edicion = (tienda_id, fecha_d)
 
+                # Buscador: con 40+ turnos, encontrar a alguien a puro scroll
+                # es lento y aumenta el riesgo de soltar un chip en el turno
+                # equivocado (el auto-scroll del navegador cerca del borde
+                # de pantalla puede mover el drop). Es solo informativo --
+                # no toca los datos del widget de arrastre, así que nunca
+                # puede perder un cambio a medio hacer.
+                busqueda = st.text_input(
+                    "Buscar empleado (nombre o ID) para saber en qué turno está",
+                    key=f"cal_busq_{tienda_id}_{fecha_d.isoformat()}",
+                    placeholder="ej. Roberto o E00003",
+                )
+                if busqueda.strip():
+                    _q = busqueda.strip().lower()
+                    _turno_por_empleado = {
+                        row["empleado_id"]: f"Turno {i + 1} · {int(row['hora_inicio'])}:00–{int(row['hora_fin'])}:00"
+                        for i, row in chips.iterrows()
+                    }
+                    _coincidencias = [
+                        e for e in empleados_tienda
+                        if _q in _nombre(e).lower() or _q in e.lower()
+                    ]
+                    if not _coincidencias:
+                        st.caption("Sin coincidencias.")
+                    else:
+                        for e in _coincidencias:
+                            _donde = _turno_por_empleado.get(e, "Plantilla (sin turno hoy)")
+                            st.caption(f"**{_nombre(e)}** ({e}) → {_donde}")
+
+                # Reserva un lugar AQUÍ (antes de los 40+ chips) para el
+                # aviso de "Cambios pendientes" -- Streamlit renderiza el
+                # contenido que se escriba más abajo en este placeholder
+                # dentro de esta posición del layout, no donde se escribe en
+                # el código. Antes quedaba hasta el fondo de la página,
+                # después de toda la Plantilla, muy lejos de donde ocurrió
+                # el cambio.
+                aviso_cambios = st.empty()
+
                 slots_originales: dict[str, str] = {}  # slot_id -> etiqueta original
                 contenedores: list[dict[str, object]] = []
                 for i, chip in chips.iterrows():
@@ -984,69 +1135,76 @@ elif pagina == "Calendario":
                 st.session_state.setdefault("cal_ediciones", {})
                 st.session_state["cal_ediciones"][clave_edicion] = edicion_dia
 
-                if edicion_dia:
-                    # Confirmación textual e inequívoca de qué cambió -- el
-                    # widget de arrastre en sí puede mostrar momentáneamente
-                    # dos nombres en la misma casilla (ver comentario arriba),
-                    # así que esta lista es la fuente de verdad sin ambigüedad
-                    # visual sobre quién quedó asignado.
-                    _slot_por_original_id = {
-                        _id_desde_etiqueta(v): k for k, v in slots_originales.items()
-                    }
-                    _filas_html = "".join(
-                        f"<div style='font-size:13px;color:#1d1d1f;padding:3px 0;'>"
-                        f"<span style='color:#6e6e73'>{_slot_por_original_id.get(_orig, '?')}:</span>&nbsp; "
-                        f"<s style='color:#6e6e73'>{_nombre(_orig)} ({_orig})</s> → "
-                        f"<b>{_nombre(_nuevo)} ({_nuevo})</b></div>"
-                        for _orig, _nuevo in edicion_dia.items()
-                    )
-                    st.markdown(
-                        "<div style='border:1px solid #d2d2d7;border-radius:10px;"
-                        "padding:10px 14px;background:#f9fafb;margin-bottom:10px;'>"
-                        "<div style='font-size:12.5px;font-weight:600;color:#1d1d1f;"
-                        "margin-bottom:4px;'>Cambios pendientes (aún sin calificar)</div>"
-                        f"{_filas_html}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.write(f"**{len(edicion_dia)} turno(s) reasignado(s) sin calificar todavía.**")
-                    if st.button("Calificar cambios", type="primary"):
-                        editado_df = horario_df.copy()
-                        mascara_dia = pd.to_datetime(editado_df["fecha"]).dt.date == fecha_d
-                        for original, nuevo_emp in edicion_dia.items():
-                            editado_df.loc[mascara_dia & (editado_df["empleado_id"] == original),
-                                            "empleado_id"] = nuevo_emp
-                        calif = costos_ahorro.calificar_edicion_manual(
-                            horario_df, editado_df, plantilla_t, reporte["demanda"], anio,
+                # Todo el aviso de cambios pendientes + calificación vive
+                # dentro del placeholder reservado ARRIBA (aviso_cambios),
+                # así que aunque este código corre después de dibujar los
+                # 40+ chips, Streamlit lo muestra justo debajo del buscador,
+                # no hasta el fondo de la página.
+                with aviso_cambios.container():
+                    if edicion_dia:
+                        # Confirmación textual e inequívoca de qué cambió --
+                        # el widget de arrastre en sí puede mostrar
+                        # momentáneamente dos nombres en la misma casilla
+                        # (ver comentario arriba), así que esta lista es la
+                        # fuente de verdad sin ambigüedad visual sobre quién
+                        # quedó asignado.
+                        _slot_por_original_id = {
+                            _id_desde_etiqueta(v): k for k, v in slots_originales.items()
+                        }
+                        _filas_html = "".join(
+                            f"<div style='font-size:13px;color:#1d1d1f;padding:3px 0;'>"
+                            f"<span style='color:#6e6e73'>{_slot_por_original_id.get(_orig, '?')}:</span>&nbsp; "
+                            f"<s style='color:#6e6e73'>{_nombre(_orig)} ({_orig})</s> → "
+                            f"<b>{_nombre(_nuevo)} ({_nuevo})</b></div>"
+                            for _orig, _nuevo in edicion_dia.items()
                         )
-                        st.session_state[f"cal_calif_{clave_edicion}"] = calif
-
-                calif = st.session_state.get(f"cal_calif_{clave_edicion}")
-                if calif:
-                    color = {"No recomendado": "error", "Costoso": "error", "Caro": "warning",
-                             "Aceptable": "warning", "Neutral": "success"}.get(calif["calificacion"], "info")
-                    getattr(st, color)(f"**{calif['calificacion']}** — {calif['mensaje']}")
-                    cc1, cc2 = st.columns(2)
-                    cc1.metric("Delta costo (MXN/semana)", f"${calif['delta_costo_mxn']:,.0f}")
-                    cc2.metric("Horas pico sin cubrir (nuevas)", calif["delta_horas_deficit_pico"])
-                    if calif["cambios_por_empleado"]:
-                        _tabla_cambios = pd.DataFrame(calif["cambios_por_empleado"])
-                        if "empleado_id" in _tabla_cambios.columns:
-                            _tabla_cambios.insert(
-                                1, "nombre", _tabla_cambios["empleado_id"].map(_nombre),
+                        st.markdown(
+                            "<div style='border:1px solid #d2d2d7;border-radius:10px;"
+                            "padding:10px 14px;background:#f9fafb;margin-bottom:10px;'>"
+                            "<div style='font-size:12.5px;font-weight:600;color:#1d1d1f;"
+                            "margin-bottom:4px;'>Cambios pendientes (aún sin calificar)</div>"
+                            f"{_filas_html}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.write(f"**{len(edicion_dia)} turno(s) reasignado(s) sin calificar todavía.**")
+                        if st.button("Calificar cambios", type="primary"):
+                            editado_df = horario_df.copy()
+                            mascara_dia = pd.to_datetime(editado_df["fecha"]).dt.date == fecha_d
+                            for original, nuevo_emp in edicion_dia.items():
+                                editado_df.loc[mascara_dia & (editado_df["empleado_id"] == original),
+                                                "empleado_id"] = nuevo_emp
+                            calif = costos_ahorro.calificar_edicion_manual(
+                                horario_df, editado_df, plantilla_t, reporte["demanda"], anio,
                             )
-                        st.dataframe(
-                            _tabla_cambios, width='stretch', hide_index=True,
-                            column_config={
-                                "empleado_id": "ID",
-                                "nombre": "Nombre",
-                                "horas_antes": "Horas antes",
-                                "horas_despues": "Horas después",
-                                "entro_a_triple": "¿Entró a triple?",
-                                "delta_costo_mxn": st.column_config.NumberColumn(
-                                    "Delta costo (MXN)", format="$%.2f",
-                                ),
-                            },
-                        )
+                            st.session_state[f"cal_calif_{clave_edicion}"] = calif
+
+                    calif = st.session_state.get(f"cal_calif_{clave_edicion}")
+                    if calif:
+                        color = {"No recomendado": "error", "Costoso": "error", "Caro": "warning",
+                                 "Aceptable": "warning", "Neutral": "success"}.get(calif["calificacion"], "info")
+                        getattr(st, color)(f"**{calif['calificacion']}** — {calif['mensaje']}")
+                        cc1, cc2 = st.columns(2)
+                        cc1.metric("Delta costo (MXN/semana)", f"${calif['delta_costo_mxn']:,.0f}")
+                        cc2.metric("Horas pico sin cubrir (nuevas)", calif["delta_horas_deficit_pico"])
+                        if calif["cambios_por_empleado"]:
+                            _tabla_cambios = pd.DataFrame(calif["cambios_por_empleado"])
+                            if "empleado_id" in _tabla_cambios.columns:
+                                _tabla_cambios.insert(
+                                    1, "nombre", _tabla_cambios["empleado_id"].map(_nombre),
+                                )
+                            st.dataframe(
+                                _tabla_cambios, width='stretch', hide_index=True,
+                                column_config={
+                                    "empleado_id": "ID",
+                                    "nombre": "Nombre",
+                                    "horas_antes": "Horas antes",
+                                    "horas_despues": "Horas después",
+                                    "entro_a_triple": "¿Entró a triple?",
+                                    "delta_costo_mxn": st.column_config.NumberColumn(
+                                        "Delta costo (MXN)", format="$%.2f",
+                                    ),
+                                },
+                            )
 
             st.caption("Vista de edición ligera del PMV: solo reasignación de turnos ya generados por el "
                        "optimizador, calificada contra el óptimo legal — no reemplaza al optimizador.")
@@ -1089,6 +1247,27 @@ elif pagina == "Simulacros":
                 tienda_id, palancas, datos_originales, anio,
                 fecha_inicio=FECHA_INICIO_DEFAULT, tiempo_limite_seg=TIEMPO_LIMITE_SEG_DEFAULT,
             )
+        # Interpretación cualitativa del resultado -- antes solo se veían
+        # los dos números pelones y un gerente no sabía si +$7,334/semana
+        # era bueno o malo para ese escenario. Es una heurística simple y
+        # propia de esta pantalla (no reutiliza los umbrales de
+        # costos_ahorro.calificar_edicion_manual, que compara contra el
+        # óptimo del día, no contra un escenario hipotético de la semana).
+        _delta_costo = resultado["delta_costo_mxn"]
+        _delta_he = resultado["delta_horas_extra"]
+        if _delta_costo <= 0 and _delta_he <= 0:
+            _etiqueta, _color, _msg = ("Favorable", "success",
+                                        "El escenario no sube el costo ni las horas extra.")
+        elif _delta_costo <= 0 < _delta_he:
+            _etiqueta, _color, _msg = ("Mixto", "warning",
+                                        "Baja el costo pero sube horas extra -- revisa la carga real del equipo.")
+        elif 0 < _delta_costo <= 5000:
+            _etiqueta, _color, _msg = ("Manejable", "warning",
+                                        "Sube el costo, pero en un rango moderado para una semana.")
+        else:
+            _etiqueta, _color, _msg = ("Alto impacto", "error",
+                                        "Sube el costo de forma importante -- conviene revisar antes de aplicarlo.")
+        getattr(st, _color)(f"**{_etiqueta}** — {_msg}")
         c1, c2 = st.columns(2)
         c1.metric("Delta de costo (MXN/semana)", f"${resultado['delta_costo_mxn']:,.0f}")
         c2.metric("Delta de horas extra", f"{resultado['delta_horas_extra']:.0f}")
@@ -1136,7 +1315,8 @@ elif pagina == "Gestión de usuarios":
     if st.button("Guardar cambios de acceso", type="primary"):
         usuarios_df.loc[editado.index, "activo"] = editado["activo"]
         st.session_state["usuarios_df"] = usuarios_df
-        st.success("Actualizado. Las cuentas desactivadas ya no podrán iniciar sesión.")
+        _guardar_estado_usuarios(usuarios_df)  # persiste en disco -- ver _usuarios_con_estado
+        st.success("Actualizado. Las cuentas desactivadas ya no podrán iniciar sesión (en cualquier sesión).")
 
     tiendas_sin_acceso = gerentes_df.loc[~gerentes_df["activo"], "tienda_id"].tolist()
     if tiendas_sin_acceso:
