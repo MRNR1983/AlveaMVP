@@ -22,7 +22,8 @@ import pandas as pd
 import streamlit as st
 from streamlit_sortables import sort_items
 
-from jornada40 import calendario, costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, usuarios, vista_red
+from jornada40 import (auditoria, calendario, costos_ahorro, datos_sinteticos, demanda_personal,
+                        escenario_base, notificaciones, optimizador, reglas, simulacros, usuarios, vista_red)
 
 st.set_page_config(page_title="Alvea PMV — Autoservicio MX", layout="wide")
 
@@ -191,35 +192,55 @@ def _cargar_usuarios(_tiendas: pd.DataFrame, _version: int = _ESQUEMA_USUARIOS_V
 _RUTA_ESTADO_USUARIOS = DATA_DIR / "usuarios_estado.csv"
 
 
-def _cargar_estado_usuarios() -> dict[str, bool]:
+def _cargar_estado_usuarios() -> tuple[dict[str, bool], dict[str, str]]:
     if not _RUTA_ESTADO_USUARIOS.exists():
-        return {}
+        return {}, {}
     try:
         estado = pd.read_csv(_RUTA_ESTADO_USUARIOS)
-        return dict(zip(estado["usuario"], estado["activo"]))
+        activos = dict(zip(estado["usuario"], estado["activo"]))
+        # "email" se agregó después de la primera versión de este CSV --
+        # un archivo viejo en disco (de un deploy anterior) puede no
+        # tener la columna; se trata como "nadie tiene correo aún".
+        correos = dict(zip(estado["usuario"], estado["email"])) if "email" in estado.columns else {}
+        return activos, correos
     except Exception:
-        return {}
+        return {}, {}
 
 
 def _guardar_estado_usuarios(usuarios_df: pd.DataFrame) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    usuarios_df[["usuario", "activo"]].to_csv(_RUTA_ESTADO_USUARIOS, index=False)
+    columnas = ["usuario", "activo"] + (["email"] if "email" in usuarios_df.columns else [])
+    usuarios_df[columnas].to_csv(_RUTA_ESTADO_USUARIOS, index=False)
 
 
 def _usuarios_con_estado(_tiendas: pd.DataFrame) -> pd.DataFrame:
-    """Base de usuarios + overrides de 'activo' persistidos en disco.
+    """Base de usuarios + overrides de 'activo'/'email' persistidos en disco.
 
     No está cacheada (la lectura del CSV es barata) para que un cambio
     guardado por CUALQUIER sesión/usuario se vea de inmediato en el
     siguiente rerun de todas las demás -- incluida la pantalla de login.
     """
     base = _cargar_usuarios(_tiendas).copy()
-    overrides = _cargar_estado_usuarios()
-    if overrides:
+    base["email"] = ""
+    activos, correos = _cargar_estado_usuarios()
+    if activos:
         base["activo"] = base.apply(
-            lambda fila: overrides.get(fila["usuario"], fila["activo"]), axis=1,
+            lambda fila: activos.get(fila["usuario"], fila["activo"]), axis=1,
         )
+    if correos:
+        base["email"] = base["usuario"].map(correos).fillna("")
     return base
+
+
+def _alcance_de_auth(auth_: dict) -> tuple[str, str | None]:
+    """Alcance (tipo, valor) que le corresponde a un perfil, para registrar
+    auditoría/notificaciones con el mismo criterio de jerarquía que el
+    resto de la app (ver _tiendas_visibles)."""
+    if auth_["rol"] == "manager":
+        return "tienda", auth_["tienda_id"]
+    if auth_["rol"] == "admin":
+        return "zona", auth_["zona_id"]
+    return "red", None
 
 
 _CSS_LOGIN = """
@@ -357,6 +378,11 @@ def _pantalla_login() -> None:
                         "rol": fila["rol"], "tienda_id": fila["tienda_id"], "zona_id": fila["zona_id"],
                         "usuario": fila["usuario"], "nombre": nombre,
                     }
+                    _alcance_tipo, _alcance_valor = _alcance_de_auth(st.session_state["auth"])
+                    auditoria.registrar_evento(
+                        DATA_DIR, fila["usuario"], fila["rol"], _alcance_tipo, _alcance_valor,
+                        "sesion_iniciada",
+                    )
                     st.rerun()
 
 
@@ -452,7 +478,40 @@ st.sidebar.markdown(
     f"</div></div>",
     unsafe_allow_html=True,
 )
+with st.sidebar.expander("Mi correo (para notificaciones)", icon=":material/mail:"):
+    st.caption("Con qué correo te avisamos si tu cuenta o tu tienda tienen algo urgente.")
+    _correo_actual = _fila_actual.get("email") or ""
+    _correo_nuevo = st.text_input("Correo", value=_correo_actual, key="input_mi_correo",
+                                   label_visibility="collapsed", placeholder="tucorreo@empresa.mx")
+    if st.button("Guardar correo", key="btn_guardar_correo"):
+        st.session_state["usuarios_df"].loc[
+            st.session_state["usuarios_df"]["usuario"] == auth_real["usuario"], "email"
+        ] = _correo_nuevo
+        _guardar_estado_usuarios(st.session_state["usuarios_df"])
+        _alcance_tipo_correo, _alcance_valor_correo = _alcance_de_auth(auth_real)
+        auditoria.registrar_evento(
+            DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_correo, _alcance_valor_correo,
+            "correo_actualizado",
+        )
+        st.success("Correo guardado.")
+        st.rerun()
+    if not notificaciones.correo_configurado():
+        st.caption("Envío por correo: no configurado todavía (falta SMTP en Secrets de la app).")
+
+_notif_no_leidas = notificaciones.no_leidas_para(DATA_DIR, auth_real)
+_etiqueta_notif = f"Notificaciones ({len(_notif_no_leidas)} sin leer)" if len(_notif_no_leidas) else "Notificaciones"
+if st.sidebar.button(_etiqueta_notif, key="nav_notificaciones_atajo",
+                      icon=":material/notifications:", width='stretch',
+                      type="primary" if len(_notif_no_leidas) else "secondary"):
+    st.session_state["pagina_actual"] = "Notificaciones"
+    st.rerun()
+
 if st.sidebar.button("Cerrar sesión", key="nav_logout"):
+    _alcance_tipo_logout, _alcance_valor_logout = _alcance_de_auth(auth_real)
+    auditoria.registrar_evento(
+        DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_logout, _alcance_valor_logout,
+        "sesion_cerrada",
+    )
     del st.session_state["auth"]
     st.rerun()
 
@@ -468,12 +527,27 @@ if auth_real["rol"] == "super_admin":
         + [f"Admin-{zid} ({info['nombre']})" for zid, info in usuarios.ZONAS.items()]
         + list(tiendas_df["tienda_id"])
     )
-    ver_como = st.sidebar.selectbox("Ver como", opciones_ver_como)
+    ver_como = st.sidebar.selectbox(
+        "Ver como", opciones_ver_como,
+        help="Solo cambia qué VES en las páginas de datos (simulación de lectura). Tus permisos de "
+             "escritura (cargar datos, gestionar usuarios, páginas internas) siguen siendo los de "
+             "Super Admin, sin importar qué perfil estés simulando.",
+    )
     if ver_como.startswith("Admin-"):
         zid = ver_como.split("-", 1)[1].split(" ", 1)[0]
         auth = {**auth_real, "rol": "admin", "zona_id": zid}
     elif ver_como != "Super Admin (todo)":
         auth = {**auth_real, "rol": "manager", "tienda_id": ver_como}
+with st.sidebar.expander("¿Qué es cada rol y página?", icon=":material/help:"):
+    st.markdown(
+        "**Jerarquía:** Gerente (una tienda) → Admin regional (una zona) → Super Admin (toda la red).\n\n"
+        "- **Ver como:** deja al Super Admin ver los datos como otro perfil, sin perder sus propios "
+        "permisos de escritura.\n"
+        "- **Modo avanzado:** desbloquea controles técnicos (sliders, tabla detallada); las páginas "
+        "internas de configuración son solo para Super Admin.\n"
+        "- **Notificaciones:** avisos dirigidos a ti, tu tienda, tu zona o toda la red.\n"
+        "- **Auditoría:** historial de quién hizo qué, acotado a lo que te corresponde ver."
+    )
 st.sidebar.divider()
 
 tiendas_visibles_df = _tiendas_visibles(auth, tiendas_df)
@@ -485,6 +559,7 @@ if auth["rol"] == "manager":
     paginas_negocio = ["Calendario", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas", "Cargar datos"]
 else:
     paginas_negocio = ["Cargar datos", "Vista Red", "Vista Tienda", "Calendario", "Simulacros", "Refuerzos entre tiendas"]
+paginas_negocio += ["Notificaciones", "Auditoría"]
 if auth_real["rol"] in ("admin", "super_admin"):
     paginas_negocio.append("Gestión de usuarios")
 usando_datos_propios = bool(st.session_state.get("datos_subidos"))
@@ -494,16 +569,19 @@ _PAGINA_SLUG = {
     "Calendario": "calendario", "Vista Tienda": "vista_tienda", "Vista Red": "vista_red",
     "Simulacros": "simulacros", "Refuerzos entre tiendas": "refuerzos",
     "Cargar datos": "cargar_datos", "Gestión de usuarios": "gestion_usuarios",
+    "Notificaciones": "notificaciones", "Auditoría": "auditoria",
 }
 _PAGINA_ICONO = {
     "Calendario": "calendar_month", "Vista Tienda": "storefront", "Vista Red": "hub",
     "Simulacros": "bolt", "Refuerzos entre tiendas": "swap_horiz",
     "Cargar datos": "upload_file", "Gestión de usuarios": "group",
+    "Notificaciones": "notifications", "Auditoría": "history",
 }
 _PAGINA_GRUPO = {
     "Calendario": "Operación", "Vista Tienda": "Operación", "Vista Red": "Operación",
     "Simulacros": "Operación", "Refuerzos entre tiendas": "Operación",
     "Cargar datos": "Datos", "Gestión de usuarios": "Administración",
+    "Notificaciones": "Administración", "Auditoría": "Administración",
 }
 _ORDEN_GRUPOS = ["Operación", "Datos", "Administración"]
 
@@ -528,6 +606,17 @@ for _grupo in _ORDEN_GRUPOS:
             st.session_state["pagina_actual"] = _p
             st.rerun()
 pagina = st.session_state["pagina_actual"]
+
+# Auditoría de navegación -- una fila por cambio de página real (no en
+# cada rerun de Streamlit, que ocurre por cualquier widget). Se compara
+# contra la última página registrada en esta sesión de navegador.
+if st.session_state.get("_pagina_auditada") != pagina:
+    _alcance_tipo_nav, _alcance_valor_nav = _alcance_de_auth(auth_real)
+    auditoria.registrar_evento(
+        DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_nav, _alcance_valor_nav,
+        "pagina_visitada", detalle=pagina,
+    )
+    st.session_state["_pagina_auditada"] = pagina
 
 st.sidebar.markdown(
     "<style>"
@@ -638,11 +727,21 @@ if pagina == "Cargar datos":
     if c1.button("Usar estos archivos", type="primary", disabled=not subidos_ahora):
         st.session_state.setdefault("datos_subidos", {}).update(subidos_ahora)
         st.cache_data.clear()
+        _alcance_tipo_dat, _alcance_valor_dat = _alcance_de_auth(auth_real)
+        auditoria.registrar_evento(
+            DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_dat, _alcance_valor_dat,
+            "datos_cargados", detalle=", ".join(subidos_ahora),
+        )
         st.success("Listo. La herramienta ya está usando tus datos.")
         st.rerun()
     if usando_datos_propios and c2.button("Volver a datos de ejemplo"):
         st.session_state["datos_subidos"] = {}
         st.cache_data.clear()
+        _alcance_tipo_dat, _alcance_valor_dat = _alcance_de_auth(auth_real)
+        auditoria.registrar_evento(
+            DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_dat, _alcance_valor_dat,
+            "datos_restablecidos",
+        )
         st.rerun()
 
     if usando_datos_propios:
@@ -674,6 +773,37 @@ elif pagina == "Vista Red":
         consolidado = vista_red.consolidar_resultados(resultados, tiendas_visibles_df)
         st.session_state["consolidado"] = consolidado
         st.session_state["resultados_red"] = resultados
+        _alcance_tipo_red, _alcance_valor_red = _alcance_de_auth(auth_real)
+        auditoria.registrar_evento(
+            DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_red, _alcance_valor_red,
+            "red_calculada", detalle=f"{len(ids)} tiendas",
+        )
+        # Avisa a cada zona afectada (tiendas infactibles o bajo el mínimo
+        # de 8% de ahorro) -- no al gerente individual, porque estos son
+        # números de negocio que le corresponde revisar al admin regional,
+        # no una acción de él mismo. Se agrupa por zona para no mandar un
+        # aviso por tienda si varias caen en la misma.
+        _tiendas_a_revisar = set(consolidado["tiendas_infeasible"]) | set(consolidado["tiendas_bajo_minimo_8pct"])
+        _zonas_afectadas: dict[str, list[str]] = {}
+        for _tid in _tiendas_a_revisar:
+            _meta = tiendas_df.loc[tiendas_df["tienda_id"] == _tid]
+            if _meta.empty:
+                continue
+            _zid = usuarios.zona_de_cluster(_meta["cluster_id"].iloc[0])
+            _zonas_afectadas.setdefault(_zid, []).append(_tid)
+        for _zid, _tids_zona in _zonas_afectadas.items():
+            _n_infeasible = len(set(_tids_zona) & set(consolidado["tiendas_infeasible"]))
+            _n_bajo_min = len(set(_tids_zona) & set(consolidado["tiendas_bajo_minimo_8pct"]))
+            _partes = []
+            if _n_infeasible:
+                _partes.append(f"{_n_infeasible} sin horario factible")
+            if _n_bajo_min:
+                _partes.append(f"{_n_bajo_min} bajo el mínimo de 8% de ahorro")
+            notificaciones.crear_notificacion(
+                DATA_DIR, "zona", _zid, "red_calculada",
+                "critico" if _n_infeasible else "advertencia",
+                f"Vista Red: {', '.join(_partes)} en tu zona ({', '.join(sorted(_tids_zona))}).",
+            )
         # Fuerza un rerun limpio al terminar -- el cálculo puede tardar
         # varios minutos en un solo script run; sin este rerun explícito,
         # cualquier clic en la barra lateral hecho mientras corría queda
@@ -1210,6 +1340,28 @@ elif pagina == "Calendario":
                                 horario_df, editado_df, plantilla_t, reporte["demanda"], anio,
                             )
                             st.session_state[f"cal_calif_{clave_edicion}"] = calif
+                            auditoria.registrar_evento(
+                                DATA_DIR, auth_real["usuario"], auth_real["rol"], "tienda", tienda_id,
+                                "turno_reasignado", detalle=f"{len(edicion_dia)} turno(s), {fecha_d.isoformat()}",
+                            )
+                            auditoria.registrar_evento(
+                                DATA_DIR, auth_real["usuario"], auth_real["rol"], "tienda", tienda_id,
+                                "turno_calificado", detalle=f"{calif['calificacion']} (${calif['delta_costo_mxn']:,.0f})",
+                            )
+                            # Solo se avisa a la zona cuando el cambio es riesgoso
+                            # de verdad -- no en cada calificación "Neutral" o
+                            # "Aceptable", para que el admin regional no se
+                            # sature de avisos por ediciones normales.
+                            if calif["calificacion"] in ("No recomendado", "Costoso", "Caro"):
+                                _zid_edicion = usuarios.zona_de_cluster(
+                                    tiendas_df.loc[tiendas_df["tienda_id"] == tienda_id, "cluster_id"].iloc[0]
+                                )
+                                notificaciones.crear_notificacion(
+                                    DATA_DIR, "zona", _zid_edicion, "turno_calificado",
+                                    "critico" if calif["calificacion"] == "No recomendado" else "advertencia",
+                                    f"Tienda {tienda_id}: edición manual de turno calificada como "
+                                    f"'{calif['calificacion']}' (${calif['delta_costo_mxn']:,.0f} MXN/semana).",
+                                )
 
                     calif = st.session_state.get(f"cal_calif_{clave_edicion}")
                     if calif:
@@ -1331,6 +1483,81 @@ elif pagina == "Refuerzos entre tiendas":
             else:
                 st.dataframe(propuestas, width='stretch')
 
+elif pagina == "Notificaciones":
+    st.header("Notificaciones")
+    st.caption(
+        "Avisos dirigidos a ti, a tu tienda, a tu zona (admin) o a toda la red (Super Admin). "
+        "Se generan solos cuando pasa algo que te corresponde revisar -- no hay que crearlos a mano."
+    )
+    _notif_todas = notificaciones.visible_para(notificaciones.cargar_notificaciones(DATA_DIR), auth_real)
+    _leidas_df = notificaciones.cargar_leidas(DATA_DIR)
+    _ids_leidas = set(_leidas_df.loc[_leidas_df["usuario"] == auth_real["usuario"], "id"]) if not _leidas_df.empty else set()
+
+    if _notif_todas.empty:
+        st.info("No hay notificaciones todavía.")
+    else:
+        _no_leidas_ids = [i for i in _notif_todas["id"] if i not in _ids_leidas]
+        c_a, c_b = st.columns([3, 1])
+        c_a.write(f"**{len(_no_leidas_ids)} sin leer** de {len(_notif_todas)} en total.")
+        if _no_leidas_ids and c_b.button("Marcar todas como leídas"):
+            notificaciones.marcar_leidas(DATA_DIR, _no_leidas_ids, auth_real["usuario"])
+            st.rerun()
+
+        _alcance_etiqueta = {"usuario": "Para ti", "tienda": "Tu tienda", "zona": "Tu zona", "red": "Toda la red"}
+        for _, _n in _notif_todas.iterrows():
+            _es_no_leida = _n["id"] not in _ids_leidas
+            _sev = notificaciones.SEVERIDADES.get(_n["severidad"], {"etiqueta": _n["severidad"], "st_metodo": "info"})
+            with st.container(border=True):
+                cc1, cc2 = st.columns([5, 1])
+                _prefijo = "**● Sin leer** — " if _es_no_leida else ""
+                _origen = _alcance_etiqueta.get(_n["alcance_tipo"], _n["alcance_tipo"])
+                getattr(cc1, _sev["st_metodo"])(f"{_prefijo}{_n['mensaje']}")
+                cc1.caption(f"{_origen} · {_n['timestamp']} · {_sev['etiqueta']}"
+                            + (" · correo enviado" if _n.get("correo_enviado") else ""))
+                if _es_no_leida and cc2.button("Leído", key=f"leer_{_n['id']}"):
+                    notificaciones.marcar_leidas(DATA_DIR, [_n["id"]], auth_real["usuario"])
+                    st.rerun()
+
+elif pagina == "Auditoría":
+    st.header("Auditoría")
+    st.caption(
+        "Histórico de quién hizo qué y cuándo, acotado a tu alcance: tu tienda (gerente), tu zona "
+        "(admin regional) o toda la red (Super Admin), más cualquier acción que hiciste tú mismo. "
+        "Respeta \"Ver como\" (igual que Gestión de usuarios) para que Super Admin pueda probar qué "
+        "vería cada perfil."
+    )
+    _audit_df = auditoria.visible_para(auditoria.cargar_auditoria(DATA_DIR), auth)
+    if _audit_df.empty:
+        st.info("Todavía no hay eventos registrados en tu alcance.")
+    else:
+        cf1, cf2 = st.columns(2)
+        _tipos_presentes = sorted(_audit_df["tipo_evento"].unique())
+        _tipo_filtro = cf1.selectbox(
+            "Tipo de evento", ["(todos)"] + _tipos_presentes,
+            format_func=lambda t: "(todos)" if t == "(todos)" else auditoria.TIPOS_EVENTO.get(t, t),
+        )
+        _usuario_filtro = cf2.selectbox("Usuario", ["(todos)"] + sorted(_audit_df["usuario"].unique()))
+        _vista_audit = _audit_df
+        if _tipo_filtro != "(todos)":
+            _vista_audit = _vista_audit[_vista_audit["tipo_evento"] == _tipo_filtro]
+        if _usuario_filtro != "(todos)":
+            _vista_audit = _vista_audit[_vista_audit["usuario"] == _usuario_filtro]
+        _vista_audit = _vista_audit.copy()
+        _vista_audit["evento"] = _vista_audit["tipo_evento"].map(lambda t: auditoria.TIPOS_EVENTO.get(t, t))
+        st.dataframe(
+            _vista_audit[["timestamp", "usuario", "rol", "alcance_tipo", "alcance_valor", "evento", "detalle"]],
+            width='stretch', hide_index=True,
+            column_config={
+                "timestamp": "Cuándo", "usuario": "Quién", "rol": "Rol",
+                "alcance_tipo": "Alcance", "alcance_valor": "Dónde", "evento": "Qué pasó", "detalle": "Detalle",
+            },
+        )
+        st.download_button(
+            "Descargar histórico filtrado (CSV)", icon=":material/download:",
+            data=_vista_audit.to_csv(index=False).encode("utf-8"),
+            file_name="auditoria.csv", mime="text/csv",
+        )
+
 elif pagina == "Gestión de usuarios":
     st.header("Gestión de usuarios")
     st.caption("Una cuenta de gerente por tienda (el usuario es el propio ID de tienda). Desactívala "
@@ -1351,13 +1578,38 @@ elif pagina == "Gestión de usuarios":
 
     editado = st.data_editor(
         vista, width='stretch', hide_index=True, disabled=["usuario", "rol", "tienda_id", "zona_id", "etiqueta"],
-        column_config={"activo": st.column_config.CheckboxColumn("Activo")},
+        column_config={
+            "activo": st.column_config.CheckboxColumn("Activo"),
+            "email": st.column_config.TextColumn(
+                "Correo", help="Para notificaciones de esa cuenta (críticas: cuenta desactivada/reactivada)."
+            ),
+        },
         key="editor_usuarios",
     )
     if st.button("Guardar cambios de acceso", type="primary"):
+        _antes = usuarios_df.set_index("usuario")["activo"].to_dict()
         usuarios_df.loc[editado.index, "activo"] = editado["activo"]
+        usuarios_df.loc[editado.index, "email"] = editado["email"]
         st.session_state["usuarios_df"] = usuarios_df
         _guardar_estado_usuarios(usuarios_df)  # persiste en disco -- ver _usuarios_con_estado
+        # Un evento + notificación por cada cuenta cuyo "activo" cambió
+        # realmente (no una fila por cada guardado, para no inundar el
+        # histórico/avisos si nada cambió en esa cuenta).
+        for _, _fila_ed in editado.iterrows():
+            _u, _antes_activo, _despues_activo = _fila_ed["usuario"], _antes.get(_fila_ed["usuario"]), _fila_ed["activo"]
+            if _antes_activo == _despues_activo:
+                continue
+            _tipo_ev = "cuenta_reactivada" if _despues_activo else "cuenta_desactivada"
+            auditoria.registrar_evento(
+                DATA_DIR, auth_real["usuario"], auth_real["rol"], "tienda", _fila_ed["tienda_id"],
+                _tipo_ev, detalle=f"por {auth_real['usuario']}",
+            )
+            _msg = (f"Tu cuenta ({_u}) fue reactivada." if _despues_activo
+                    else f"Tu cuenta ({_u}) fue desactivada. Contacta a HQ para reactivarla.")
+            notificaciones.crear_notificacion(
+                DATA_DIR, "usuario", _u, _tipo_ev, "info" if _despues_activo else "critico", _msg,
+                email_destino=_fila_ed.get("email") or None,
+            )
         st.success("Actualizado. Las cuentas desactivadas ya no podrán iniciar sesión (en cualquier sesión).")
 
     tiendas_sin_acceso = gerentes_df.loc[~gerentes_df["activo"], "tienda_id"].tolist()
