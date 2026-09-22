@@ -192,3 +192,26 @@ mostrado en la sidebar tras loguearse sigue siendo el `tienda_id` real
 está. Verificado con `AppTest`: `Man001` -> tienda de la primera fila del
 catálogo, `man050` (minúsculas) también entra, `T001` ya no es un usuario
 válido.
+
+## Bug real encontrado en producción: caché de Streamlit Cloud con esquema viejo de usuarios (21-sep-2026)
+Al revisar la app desplegada, el login tronaba con `KeyError: 'usuario'`
+en `usuarios.buscar_usuario` -- el código desplegado ya era el más
+reciente (la línea del traceback coincide exacto con `usuarios.py:117`),
+pero `_cargar_usuarios()` en `app.py` seguía devolviendo, vía
+`st.cache_data`, un `DataFrame` con el esquema VIEJO de usuarios (sin
+columna `usuario`). Causa: `st.cache_data` hashea el código fuente de la
+función decorada (`_cargar_usuarios`), no el de las funciones que llama
+(`usuarios.generar_usuarios`) -- como `_cargar_usuarios` nunca cambió su
+propio código en ninguno de los commits de hoy, Streamlit Cloud siguió
+sirviendo el resultado cacheado de un despliegue anterior aunque el
+esquema de usuarios cambió varias veces.
+
+Arreglo: se agregó un parámetro `_version` con un entero
+`_ESQUEMA_USUARIOS_VERSION` que se debe subir cada vez que cambie el
+esquema de `generar_usuarios()` -- esto fuerza una nueva llave de caché y
+evita que se repita este bug en futuros despliegues. Lección para el
+registro: un `st.cache_data` sobre una función "delgada" que delega en
+otro módulo es un riesgo de staleness silencioso -- no basta con probar
+localmente (ahí sí se regenera porque no hay caché persistente entre
+corridas de `pytest`/`AppTest`), hay que pensar en el caso de despliegue
+con caché viejo.

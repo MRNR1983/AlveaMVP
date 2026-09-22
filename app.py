@@ -131,8 +131,18 @@ datos = cargar_datos()
 tiendas_df = datos["tiendas"]
 
 
+# El marcador de versión fuerza a Streamlit a invalidar su caché cuando
+# cambia el ESQUEMA de usuarios (jornada40/usuarios.py). st.cache_data solo
+# hashea el código fuente de esta función, no el de generar_usuarios() --
+# sin este marcador, un despliegue puede seguir sirviendo un DataFrame
+# viejo (por eso el bug real en Streamlit Cloud: "KeyError: 'usuario'"
+# después de renombrar columnas). Súbele el número cada vez que cambie el
+# esquema de generar_usuarios (columnas, roles, formato del usuario, etc.).
+_ESQUEMA_USUARIOS_VERSION = 3
+
+
 @st.cache_data(show_spinner=False)
-def _cargar_usuarios(_tiendas: pd.DataFrame) -> pd.DataFrame:
+def _cargar_usuarios(_tiendas: pd.DataFrame, _version: int = _ESQUEMA_USUARIOS_VERSION) -> pd.DataFrame:
     return usuarios.generar_usuarios(_tiendas, seed=42)
 
 
