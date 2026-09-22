@@ -152,7 +152,7 @@ def _pantalla_login() -> None:
     with col_mid:
         st.markdown("### Alvea PMV")
         with st.form("form_login", border=False):
-            usuario_txt = st.text_input("Usuario", placeholder="Usuario (ej. ADMIN, SADMIN, T001-U1)",
+            usuario_txt = st.text_input("Usuario", placeholder="Usuario (ej. SADMIN, ADMIN-Z1, T001)",
                                          label_visibility="collapsed")
             password = st.text_input("Contraseña", type="password", placeholder="Contraseña",
                                       label_visibility="collapsed")
@@ -168,12 +168,15 @@ def _pantalla_login() -> None:
                 elif password != usuarios.password_login():
                     st.error("Contraseña incorrecta.")
                 else:
-                    nombre = {"admin": "Admin", "super_admin": "SAdmin"}.get(
-                        fila["rol"], f"{fila['tienda_id']} · {fila['usuario_id']}"
-                    )
+                    if fila["rol"] == "super_admin":
+                        nombre = "SAdmin"
+                    elif fila["rol"] == "admin":
+                        nombre = f"Admin · {usuarios.ZONAS[fila['zona_id']]['nombre']}"
+                    else:
+                        nombre = fila["tienda_id"]
                     st.session_state["auth"] = {
-                        "rol": fila["rol"], "tienda_id": fila["tienda_id"],
-                        "usuario_id": fila["usuario_id"], "nombre": nombre,
+                        "rol": fila["rol"], "tienda_id": fila["tienda_id"], "zona_id": fila["zona_id"],
+                        "usuario": fila["usuario"], "nombre": nombre,
                     }
                     st.rerun()
 
@@ -185,8 +188,23 @@ if "auth" not in st.session_state:
 auth_real = st.session_state["auth"]
 st.session_state.setdefault("usuarios_df", _cargar_usuarios(tiendas_df))
 
+def _tiendas_visibles(auth_: dict, tiendas: pd.DataFrame) -> pd.DataFrame:
+    """Subconjunto de tiendas que puede ver/operar este perfil: su tienda
+    (manager), su zona (admin regional), o todas (super admin)."""
+    if auth_["rol"] == "manager":
+        return tiendas[tiendas["tienda_id"] == auth_["tienda_id"]]
+    if auth_["rol"] == "admin":
+        return usuarios.tiendas_de_zona(auth_["zona_id"], tiendas)
+    return tiendas
+
+
 st.sidebar.title("Alvea PMV — Autoservicio MX")
-_etiqueta_ambito = {"admin": "Admin/HQ", "super_admin": "Super Admin"}.get(auth_real["rol"], auth_real["tienda_id"])
+if auth_real["rol"] == "super_admin":
+    _etiqueta_ambito = "Super Admin"
+elif auth_real["rol"] == "admin":
+    _etiqueta_ambito = f"Admin · zona {usuarios.ZONAS[auth_real['zona_id']]['nombre']}"
+else:
+    _etiqueta_ambito = auth_real["tienda_id"]
 st.sidebar.caption(f"👤 {auth_real['nombre']} · {_etiqueta_ambito}")
 if st.sidebar.button("Cerrar sesión"):
     del st.session_state["auth"]
@@ -199,13 +217,20 @@ if st.sidebar.button("Cerrar sesión"):
 # usuarios), sin importar que perfil este simulando ver.
 auth = auth_real
 if auth_real["rol"] == "super_admin":
-    opciones_ver_como = ["Super Admin (todo)", "Admin / HQ"] + list(tiendas_df["tienda_id"])
+    opciones_ver_como = (
+        ["Super Admin (todo)"]
+        + [f"Admin-{zid} ({info['nombre']})" for zid, info in usuarios.ZONAS.items()]
+        + list(tiendas_df["tienda_id"])
+    )
     ver_como = st.sidebar.selectbox("Ver como", opciones_ver_como)
-    if ver_como == "Admin / HQ":
-        auth = {**auth_real, "rol": "admin"}
+    if ver_como.startswith("Admin-"):
+        zid = ver_como.split("-", 1)[1].split(" ", 1)[0]
+        auth = {**auth_real, "rol": "admin", "zona_id": zid}
     elif ver_como != "Super Admin (todo)":
         auth = {**auth_real, "rol": "manager", "tienda_id": ver_como}
 st.sidebar.divider()
+
+tiendas_visibles_df = _tiendas_visibles(auth, tiendas_df)
 
 if auth["rol"] == "manager":
     paginas_negocio = ["Cargar datos", "Vista Tienda", "Simulacros", "Refuerzos entre tiendas"]
@@ -294,15 +319,19 @@ if pagina == "Cargar datos":
         st.info("Usando datos de ejemplo (marca ficticia, 100% sintéticos).")
 
 elif pagina == "Vista Red":
-    st.header("Vista Red — consolidado de las 50 tiendas")
-    n_tiendas = len(tiendas_df)
+    if auth["rol"] == "admin":
+        _alcance = f"zona {usuarios.ZONAS[auth['zona_id']]['nombre']} ({len(tiendas_visibles_df)} tiendas)"
+    else:
+        _alcance = f"las {len(tiendas_visibles_df)} tiendas"
+    st.header(f"Vista Red — consolidado de {_alcance}")
+    n_tiendas = len(tiendas_visibles_df)
     if modo_avanzado:
         n_tiendas = st.slider("Tiendas a calcular (modo avanzado: reduce para pruebas rápidas)",
-                               1, len(tiendas_df), min(5, len(tiendas_df)))
+                               1, len(tiendas_visibles_df), min(5, len(tiendas_visibles_df)))
     if st.button("Calcular ahorro de la red", type="primary"):
-        ids = list(tiendas_df["tienda_id"].head(n_tiendas))
+        ids = list(tiendas_visibles_df["tienda_id"].head(n_tiendas))
         resultados = calcular_red(ids, anio, TIEMPO_LIMITE_SEG_DEFAULT, datos)
-        consolidado = vista_red.consolidar_resultados(resultados, tiendas_df)
+        consolidado = vista_red.consolidar_resultados(resultados, tiendas_visibles_df)
         st.session_state["consolidado"] = consolidado
         st.session_state["resultados_red"] = resultados
 
@@ -340,7 +369,7 @@ elif pagina == "Vista Tienda":
         tienda_id = auth["tienda_id"]
         st.caption(f"Tienda: {tienda_id} (tu tienda)")
     else:
-        tienda_id = st.selectbox("Tienda", tiendas_df["tienda_id"])
+        tienda_id = st.selectbox("Tienda", tiendas_visibles_df["tienda_id"])
     if st.button("Calcular esta tienda") or tienda_id in st.session_state.get("cache_tiendas", {}):
         reporte = calcular_resultado_tienda(
             tienda_id, anio, TIEMPO_LIMITE_SEG_DEFAULT,
@@ -394,7 +423,7 @@ elif pagina == "Simulacros":
         tienda_id = auth["tienda_id"]
         st.caption(f"Tienda: {tienda_id} (tu tienda)")
     else:
-        tienda_id = st.selectbox("Tienda a simular", tiendas_df["tienda_id"])
+        tienda_id = st.selectbox("Tienda a simular", tiendas_visibles_df["tienda_id"])
 
     escenarios_trafico = {
         "Normal": 1.0, "Alta demanda (+15%, ej. Buen Fin)": 1.15,
@@ -442,8 +471,8 @@ elif pagina == "Refuerzos entre tiendas":
             cluster_sel = tiendas_df.set_index("tienda_id").loc[auth["tienda_id"], "cluster_id"]
             st.caption(f"Clúster: {cluster_sel} (el de tu tienda)")
         else:
-            cluster_sel = st.selectbox("Clúster", sorted(tiendas_df["cluster_id"].unique()))
-        ids_cluster = tiendas_df.loc[tiendas_df["cluster_id"] == cluster_sel, "tienda_id"]
+            cluster_sel = st.selectbox("Clúster", sorted(tiendas_visibles_df["cluster_id"].unique()))
+        ids_cluster = tiendas_visibles_df.loc[tiendas_visibles_df["cluster_id"] == cluster_sel, "tienda_id"]
         propuestas_cluster = {tid: r["propuesta"] for tid, r in resultados_red.items() if tid in ids_cluster.values}
         if len(propuestas_cluster) < 2:
             st.write("Necesitas al menos 2 tiendas calculadas en este clúster.")
@@ -452,19 +481,21 @@ elif pagina == "Refuerzos entre tiendas":
             st.dataframe(propuestas, width='stretch')
 
 elif pagina == "Gestión de usuarios":
-    st.header("Gestión de usuarios por tienda")
-    st.caption("Cada tienda tiene 3 cuentas genéricas/flotantes (usuario = tienda-U1/U2/U3) que el "
-               "gerente usa SI LAS NECESITA, mientras el alta individual de alguien nuevo no está "
-               "capturada en el sistema. Desactiva una solo si es necesario -- las otras dos siguen "
-               "pudiendo entrar. ADMIN y SADMIN no se listan aquí (siempre activas).")
+    st.header("Gestión de usuarios")
+    st.caption("Una cuenta de gerente por tienda (el usuario es el propio ID de tienda). Desactívala "
+               "si necesitas bloquear el acceso a esa tienda. SADMIN y las 5 cuentas ADMIN (una por "
+               "zona) no se listan aquí -- siempre están activas.")
     usuarios_df = st.session_state["usuarios_df"]
-    gerentes_df = usuarios_df[usuarios_df["rol"] == "manager"]
+    # Un admin regional solo gestiona los gerentes de su propia zona; SADMIN los ve todos.
+    tiendas_gestion_df = _tiendas_visibles(auth_real, tiendas_df)
+    gerentes_df = usuarios_df[(usuarios_df["rol"] == "manager")
+                               & (usuarios_df["tienda_id"].isin(tiendas_gestion_df["tienda_id"]))]
     tienda_filtro = st.selectbox("Filtrar por tienda (opcional)",
-                                  ["(todas)"] + list(tiendas_df["tienda_id"]))
+                                  ["(todas)"] + list(tiendas_gestion_df["tienda_id"]))
     vista = gerentes_df if tienda_filtro == "(todas)" else gerentes_df[gerentes_df["tienda_id"] == tienda_filtro]
 
     editado = st.data_editor(
-        vista, width='stretch', hide_index=True, disabled=["usuario", "rol", "tienda_id", "usuario_id", "etiqueta"],
+        vista, width='stretch', hide_index=True, disabled=["usuario", "rol", "tienda_id", "zona_id", "etiqueta"],
         column_config={"activo": st.column_config.CheckboxColumn("Activo")},
         key="editor_usuarios",
     )
@@ -473,10 +504,9 @@ elif pagina == "Gestión de usuarios":
         st.session_state["usuarios_df"] = usuarios_df
         st.success("Actualizado. Las cuentas desactivadas ya no podrán iniciar sesión.")
 
-    sin_acceso = gerentes_df.groupby("tienda_id")["activo"].any()
-    tiendas_sin_acceso = sin_acceso[~sin_acceso].index.tolist()
+    tiendas_sin_acceso = gerentes_df.loc[~gerentes_df["activo"], "tienda_id"].tolist()
     if tiendas_sin_acceso:
-        st.error(f"⚠️ Tiendas sin ninguna cuenta de gerente activa (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
+        st.error(f"⚠️ Tiendas sin gerente activo (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
 
 elif pagina == "Configuración de reglas":
     st.header("Configuración de reglas legales por vigencia")

@@ -18,15 +18,16 @@ todos.
 
 | Usuario | Quién es |
 | --- | --- |
-| `ADMIN` | Admin / HQ — ve las 50 tiendas y gestiona usuarios |
 | `SADMIN` | Super Admin — ve todo, puede "ver como" cualquier perfil sin volver a loguearse |
-| `T001-U1`, `T001-U2`, `T001-U3` | Gerente de la tienda T001 (cuentas genéricas/flotantes — igual para T002, T003, ... hasta la última tienda del catálogo) |
+| `ADMIN-Z1` .. `ADMIN-Z5` | Admin regional — una cuenta por zona (CDMX, Occidente, Noreste, Centro, Sureste), ve/gestiona solo las tiendas de su zona |
+| `T001` .. `T050` | Gerente de esa tienda (el usuario es el propio ID de tienda) — solo ve su tienda |
 
-Las cuentas `<tienda>-U1/U2/U3` no son de una persona fija: son cuentas
-flotantes que el gerente usa solo si las necesita, mientras el alta
-individual de un empleado nuevo aún no está capturada en el sistema, para
-no perder sus horas. Se activan/desactivan desde "Gestión de usuarios"
-(rol Admin o SAdmin).
+Cada tienda tiene un único usuario de gerente (no hay cuentas de respaldo).
+Las 5 zonas de Admin agrupan los 10 clústeres geográficos del catálogo de
+tiendas (ver `jornada40/usuarios.py::ZONAS` — es un supuesto de producto,
+ajustable). Los admins regionales y sus tiendas se activan/desactivan desde
+"Gestión de usuarios" (rol Admin o SAdmin; un admin regional solo ve/gestiona
+su propia zona).
 
 La contraseña son los primeros dígitos de π, elegidos justo por ser un
 valor público y fácil de compartir con quien revise la herramienta — no es

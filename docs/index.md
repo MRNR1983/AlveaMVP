@@ -13,9 +13,10 @@ actual.
 **Repo (código completo):** [github.com/MRNR1983/AlveaMVP](https://github.com/MRNR1983/AlveaMVP)
 
 **Login:** usuario + contraseña (el usuario ya dice el rol, no hay
-selector aparte). Usuario `ADMIN`, `SADMIN`, o `T001-U1` (tienda-cuenta,
-para gerente) — contraseña **`3.14159265358`** para cualquiera (primeros
-dígitos de π — público a propósito, ver README para el detalle completo).
+selector aparte). Usuario `SADMIN`, `ADMIN-Z1`..`ADMIN-Z5` (por zona), o
+`T001`..`T050` (una tienda, un gerente) — contraseña **`3.14159265358`**
+para cualquiera (primeros dígitos de π — público a propósito, ver README
+para el detalle completo).
 
 ## Empieza aquí
 

@@ -153,3 +153,30 @@ Verificado con `AppTest`: usuario inexistente, contraseña incorrecta,
 ADMIN/SADMIN/T001-U1 correctos, y que Manager no ve "Vista Red" ni
 "Gestión de usuarios". Documentación de acceso actualizada en README.md
 y docs/index.md con el nuevo formato de usuario.
+
+## Retiro de las cuentas U1/U2/U3 + jerarquía Sadmin/Admin-por-zona/Manager-por-tienda (21-sep-2026)
+El negocio pidió confirmar qué eran realmente las cuentas U1/U2/U3 antes de
+seguir adivinando (ya iba dos veces mal). Decisión final, distinta a lo que
+se había construido: **se retiraron por completo** -- no aportan nada al
+negocio en esta etapa. Estructura nueva de usuarios:
+- **1 SADMIN**: ve y puede simular cualquier perfil.
+- **5 ADMIN regionales** (`ADMIN-Z1`..`ADMIN-Z5`), uno por zona geográfica.
+  Las zonas agrupan los 10 clústeres ficticios del catálogo de tiendas en
+  5 (`jornada40/usuarios.py::ZONAS`) -- supuesto de producto, documentado
+  y fácil de ajustar si el negocio prefiere otra agrupación. Cada admin
+  regional ve y opera solo las tiendas de su zona (Vista Red, Vista
+  Tienda, Simulacros, Refuerzos y Gestión de usuarios quedan filtrados a
+  su zona), no las 50.
+- **1 MANAGER por tienda** (usuario = el propio `tienda_id`, ej. `T001`):
+  ya no hay cuentas de respaldo/flotantes por tienda -- una tienda, un
+  usuario.
+
+Se agregó `_tiendas_visibles(auth, tiendas_df)` en `app.py` como punto
+único de scoping: decide qué tiendas ve cada perfil (su tienda / su zona /
+todas) y se usa en todas las páginas que antes mostraban las 50 tiendas
+sin filtrar. Verificado con `AppTest`: SADMIN ve las 5 zonas en "Ver
+como", ADMIN-Z1 ve solo sus ~12 tiendas (CDMX) en Vista Red, un manager
+(`T001`) no ve "Vista Red" ni "Gestión de usuarios", y el usuario viejo
+estilo `T001-U1` ya no existe. Roster total: 56 usuarios (1 + 5 + 50),
+antes eran 152. README.md y docs/index.md actualizados con el nuevo
+formato de credenciales.
