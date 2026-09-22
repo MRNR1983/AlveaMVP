@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from streamlit_sortables import sort_items
 
 from jornada40 import calendario, costos_ahorro, datos_sinteticos, demanda_personal, escenario_base, optimizador, reglas, simulacros, usuarios, vista_red
 
@@ -701,9 +702,17 @@ elif pagina == "Calendario":
             # intercambiar dos chips -- el CP-SAT ya encontró el óptimo legal,
             # así que cualquier edición manual solo puede alejarse de él; por
             # eso se califica con costos_ahorro.calificar_edicion_manual en
-            # vez de resolverse como un problema nuevo. No hay arrastrar-y-soltar
-            # real (Streamlit no lo soporta de forma nativa): "mover" un turno
-            # es reasignarlo con el selector de la derecha de cada chip.
+            # vez de resolverse como un problema nuevo.
+            #
+            # Arrastrar y soltar real (streamlit-sortables, componente de
+            # terceros -- Streamlit no lo trae nativo): cada turno del día es
+            # su propio contenedor de 1 casilla ("Turno N · HH:MM–HH:MM"),
+            # más un contenedor "Plantilla" con el resto de la tienda.
+            # Arrastrar un nombre a un turno lo reasigna; el nombre que salga
+            # de ese turno cae de vuelta en Plantilla. El resultado se
+            # compara contra la asignación original del optimizador para
+            # armar el mismo dict `edicion_dia` de siempre (sin tocar la
+            # lógica de calificación de abajo).
             if horario_dia.empty:
                 st.info("Nadie tiene turno asignado este día en la propuesta.")
             else:
@@ -712,33 +721,46 @@ elif pagina == "Calendario":
                 chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
                 chips = chips.sort_values("hora_inicio").reset_index(drop=True)
 
-                st.write(f"**{len(chips)} turnos**")
+                st.write(f"**{len(chips)} turnos** — arrastra un nombre desde *Plantilla* hacia un turno para reasignarlo.")
                 empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
                 clave_edicion = (tienda_id, fecha_d)
-                st.session_state.setdefault("cal_ediciones", {})
-                edicion_dia = st.session_state["cal_ediciones"].setdefault(clave_edicion, {})
 
-                for _, chip in chips.iterrows():
-                    emp_original = chip["empleado_id"]
-                    with st.container(border=True):
-                        ch1, ch2 = st.columns([2, 3])
-                        ch1.markdown(
-                            f"<span style='background:#f5f5f7;border-radius:999px;padding:0.2rem 0.7rem;"
-                            f"font-weight:600;font-size:0.88rem;color:#1d1d1f'>{emp_original}</span> "
-                            f"<span style='color:#86868b;font-size:0.85rem'>"
-                            f"{int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00</span>",
-                            unsafe_allow_html=True,
-                        )
-                        opciones = [emp_original] + [e for e in empleados_tienda if e != emp_original]
-                        actual = edicion_dia.get(emp_original, emp_original)
-                        nuevo = ch2.selectbox(
-                            "Reasignar a", opciones, index=opciones.index(actual) if actual in opciones else 0,
-                            key=f"cal_chip_{fecha_d.isoformat()}_{emp_original}", label_visibility="collapsed",
-                        )
-                        if nuevo != emp_original:
-                            edicion_dia[emp_original] = nuevo
-                        elif emp_original in edicion_dia:
-                            del edicion_dia[emp_original]
+                slots_originales: dict[str, str] = {}
+                contenedores: dict[str, list[str]] = {}
+                for i, chip in chips.iterrows():
+                    slot_id = f"Turno {i + 1} · {int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00"
+                    contenedores[slot_id] = [chip["empleado_id"]]
+                    slots_originales[slot_id] = chip["empleado_id"]
+
+                asignados_hoy = set(chips["empleado_id"])
+                contenedores["Plantilla (sin turno hoy)"] = [
+                    e for e in empleados_tienda if e not in asignados_hoy
+                ]
+
+                resultado_drag = sort_items(
+                    contenedores, multi_containers=True, direction="horizontal",
+                    key=f"cal_dnd_{tienda_id}_{fecha_d.isoformat()}",
+                    custom_style="""
+                    .sortable-component{gap:10px;flex-wrap:wrap}
+                    .sortable-container{background:#ffffff;border:1px solid #d2d2d7;
+                        border-radius:10px;min-width:160px;padding:6px;}
+                    .sortable-container-header{font-size:0.7rem;font-weight:600;
+                        color:#6e6e73;padding:4px 6px;}
+                    .sortable-item{background:#f5f5f7;border:1px solid #ececec;
+                        border-radius:999px;padding:5px 12px;font-size:0.85rem;
+                        font-weight:600;color:#1d1d1f;margin:3px;cursor:grab;}
+                    """,
+                )
+
+                edicion_dia: dict[str, str] = {}
+                if resultado_drag:
+                    for slot_id, emp_original in slots_originales.items():
+                        ocupante = resultado_drag.get(slot_id, [])
+                        nuevo_emp = ocupante[0] if ocupante else None
+                        if nuevo_emp and nuevo_emp != emp_original:
+                            edicion_dia[emp_original] = nuevo_emp
+                st.session_state.setdefault("cal_ediciones", {})
+                st.session_state["cal_ediciones"][clave_edicion] = edicion_dia
 
                 if edicion_dia:
                     st.write(f"**{len(edicion_dia)} turno(s) reasignado(s) sin calificar todavía.**")
