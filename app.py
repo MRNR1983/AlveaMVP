@@ -532,7 +532,8 @@ if pagina == "Cargar datos":
     cols_plantillas = st.columns(len(ARCHIVOS_DATASET))
     for col, nombre in zip(cols_plantillas, ARCHIVOS_DATASET):
         col.download_button(
-            f"⬇️ {etiquetas[nombre]}",
+            etiquetas[nombre],
+            icon=":material/download:",
             data=ejemplo[nombre].to_csv(index=False).encode("utf-8"),
             file_name=f"{nombre}_ejemplo.csv",
             mime="text/csv",
@@ -626,7 +627,8 @@ elif pagina == "Vista Red":
         )
 
         st.download_button(
-            "⬇️ Descargar ranking de tiendas (CSV)",
+            "Descargar ranking de tiendas (CSV)",
+            icon=":material/download:",
             data=filtrado.to_csv(index=False).encode("utf-8"),
             file_name="ranking_ahorro_tiendas.csv",
             mime="text/csv",
@@ -678,7 +680,8 @@ elif pagina == "Vista Tienda":
 
         dl1, dl2 = st.columns(2)
         dl1.download_button(
-            "⬇️ Descargar horario completo (CSV)",
+            "Descargar horario completo (CSV)",
+            icon=":material/download:",
             data=reporte["propuesta"]["horario_df"].to_csv(index=False).encode("utf-8"),
             file_name=f"horario_{tienda_id}.csv", mime="text/csv",
         )
@@ -690,7 +693,8 @@ elif pagina == "Vista Tienda":
             f"% del techo capturado: {brecha.get('pct_del_techo_capturado', 0):.1%}\n"
         )
         dl2.download_button(
-            "⬇️ Descargar reporte CFO (TXT)",
+            "Descargar reporte CFO (TXT)",
+            icon=":material/download:",
             data=resumen_cfo.encode("utf-8"),
             file_name=f"reporte_cfo_{tienda_id}.txt", mime="text/plain",
         )
@@ -1136,7 +1140,7 @@ elif pagina == "Gestión de usuarios":
 
     tiendas_sin_acceso = gerentes_df.loc[~gerentes_df["activo"], "tienda_id"].tolist()
     if tiendas_sin_acceso:
-        st.error(f"⚠️ Tiendas sin gerente activo (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
+        st.error(f"Tiendas sin gerente activo (nadie puede entrar): {', '.join(tiendas_sin_acceso)}")
 
 elif pagina == "Configuración de reglas":
     st.header("Configuración de reglas legales por vigencia")
