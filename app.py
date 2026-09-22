@@ -721,7 +721,9 @@ elif pagina == "Calendario":
                 chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
                 chips = chips.sort_values("hora_inicio").reset_index(drop=True)
 
-                st.write(f"**{len(chips)} turnos** — arrastra un nombre desde *Plantilla* hacia un turno para reasignarlo.")
+                st.write(f"**{len(chips)} turnos** — arrastra un nombre desde *Plantilla* hacia un turno para reasignarlo. "
+                         f"Si el turno ya tenía a alguien, puede quedar visualmente junto al nuevo nombre; "
+                         f"el sistema toma al que acabas de soltar como el asignado.")
                 empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
                 clave_edicion = (tienda_id, fecha_d)
 
@@ -760,7 +762,13 @@ elif pagina == "Calendario":
                     }
                     for slot_id, emp_original in slots_originales.items():
                         ocupante = ocupantes_por_slot.get(slot_id, [])
-                        nuevo_emp = ocupante[0] if ocupante else None
+                        # Si sueltas a alguien en un turno que ya tenía ocupante,
+                        # ambos quedan momentáneamente en la misma casilla (el
+                        # componente no expulsa al anterior). Gana quien llegó
+                        # nuevo: tomamos al primero de la lista que NO sea el
+                        # empleado original de ese turno.
+                        candidatos_nuevos = [e for e in ocupante if e != emp_original]
+                        nuevo_emp = candidatos_nuevos[0] if candidatos_nuevos else None
                         if nuevo_emp and nuevo_emp != emp_original:
                             edicion_dia[emp_original] = nuevo_emp
                 st.session_state.setdefault("cal_ediciones", {})
