@@ -221,6 +221,17 @@ div[class*="st-key-cal_dia_"] button:disabled {
     border-color: #e5e5ea;
     color: #6e6e73;
 }
+/* punto de estado bajo el número de día (reemplaza los emoji 🟢/🔵) --
+   verde = semana con horario ya calculado, azul = semana sin calcular */
+div[class*="st-key-cal_dia_"][class*="_est-c"] button,
+div[class*="st-key-cal_dia_"][class*="_est-p"] button { position: relative; }
+div[class*="st-key-cal_dia_"][class*="_est-c"] button::after,
+div[class*="st-key-cal_dia_"][class*="_est-p"] button::after {
+    content: ""; position: absolute; left: 50%; bottom: 10px;
+    width: 6px; height: 6px; border-radius: 999px; transform: translateX(-50%);
+}
+div[class*="st-key-cal_dia_"][class*="_est-c"] button::after { background: #34c759; }
+div[class*="st-key-cal_dia_"][class*="_est-p"] button::after { background: #0071e3; }
 /* celda vacía de relleno (antes / después del mes) */
 .cal-celda-vacia {
     aspect-ratio: 1;
@@ -318,15 +329,70 @@ def _tiendas_visibles(auth_: dict, tiendas: pd.DataFrame) -> pd.DataFrame:
     return tiendas
 
 
-st.sidebar.title("Alvea PMV — Autoservicio MX")
+_CSS_SIDEBAR = """
+<style>
+/* Encabezado de marca */
+.cal-nav-titulo { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; padding: 0 8px 2px 8px; }
+.cal-nav-subtitulo { font-size: 12px; color: #6e6e73; padding: 0 8px 16px 8px; }
+/* Tarjeta de usuario (avatar + nombre + ámbito) */
+.cal-nav-usuario {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 8px; border: 1px solid #ececec; border-radius: 10px;
+    margin-bottom: 8px;
+}
+.cal-nav-avatar {
+    width: 32px; height: 32px; border-radius: 999px; color: #ffffff;
+    font-size: 12.5px; font-weight: 600; display: flex; align-items: center;
+    justify-content: center; flex: 0 0 32px;
+}
+.cal-nav-usuario-nombre { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-nav-usuario-ambito { font-size: 11px; color: #6e6e73; }
+/* Botón "Cerrar sesión" */
+div[class*="st-key-nav_logout"] button {
+    width: 100%; border-radius: 8px; border: 1px solid #d2d2d7;
+    background: #ffffff; color: #1d1d1f; font-size: 12.5px; font-weight: 500;
+}
+div[class*="st-key-nav_logout"] button:hover { border-color: #0071e3; color: #0071e3; }
+/* Encabezados de grupo (OPERACIÓN / DATOS / ADMINISTRACIÓN) */
+.cal-nav-grupo {
+    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: #6e6e73; padding: 4px 8px 6px 8px; margin-top: 10px;
+}
+/* Filas de navegación: mismo look para todas por defecto */
+div[class*="st-key-nav_pg_"] button {
+    width: 100%; justify-content: flex-start; text-align: left;
+    border: none; background: transparent; border-radius: 8px;
+    color: #1d1d1f; font-size: 13.5px; font-weight: 400; padding: 9px 10px;
+    box-shadow: none;
+}
+div[class*="st-key-nav_pg_"] button:hover { background: #f5f5f7; }
+div[class*="st-key-nav_pg_"] p { font-size: 13.5px; }
+</style>
+"""
+st.sidebar.markdown(_CSS_SIDEBAR, unsafe_allow_html=True)
+
 if auth_real["rol"] == "super_admin":
-    _etiqueta_ambito = "Super Admin"
+    _etiqueta_ambito = "Todas las tiendas"
+    _iniciales_usuario, _color_avatar, _nombre_usuario = "SA", "#0071e3", "Super Admin"
 elif auth_real["rol"] == "admin":
-    _etiqueta_ambito = f"Admin · zona {usuarios.ZONAS[auth_real['zona_id']]['nombre']}"
+    _etiqueta_ambito = f"Zona {usuarios.ZONAS[auth_real['zona_id']]['nombre']}"
+    _iniciales_usuario, _color_avatar, _nombre_usuario = auth_real["zona_id"][:2].upper(), "#6e6e73", auth_real["nombre"]
 else:
-    _etiqueta_ambito = auth_real["tienda_id"]
-st.sidebar.caption(f"👤 {auth_real['nombre']} · {_etiqueta_ambito}")
-if st.sidebar.button("Cerrar sesión"):
+    _etiqueta_ambito = "Gerente de tienda"
+    _iniciales_usuario, _color_avatar, _nombre_usuario = auth_real["tienda_id"][:2].upper(), "#6e6e73", auth_real["tienda_id"]
+
+st.sidebar.markdown(
+    f"<div class='cal-nav-titulo'>Alvea PMV</div>"
+    f"<div class='cal-nav-subtitulo'>Autoservicio MX</div>"
+    f"<div class='cal-nav-usuario'>"
+    f"<div class='cal-nav-avatar' style='background:{_color_avatar};'>{_iniciales_usuario}</div>"
+    f"<div style='min-width:0;'>"
+    f"<div class='cal-nav-usuario-nombre'>{_nombre_usuario}</div>"
+    f"<div class='cal-nav-usuario-ambito'>{_etiqueta_ambito}</div>"
+    f"</div></div>",
+    unsafe_allow_html=True,
+)
+if st.sidebar.button("Cerrar sesión", key="nav_logout"):
     del st.session_state["auth"]
     st.rerun()
 
@@ -362,11 +428,70 @@ else:
 if auth_real["rol"] in ("admin", "super_admin"):
     paginas_negocio.append("Gestión de usuarios")
 usando_datos_propios = bool(st.session_state.get("datos_subidos"))
-etiqueta_datos = "🟢 Cargar datos (usando tus archivos)" if usando_datos_propios else "🔵 Cargar datos (usando datos de ejemplo)"
-pagina = st.sidebar.radio(
-    "Ir a", paginas_negocio,
-    format_func=lambda p: etiqueta_datos if p == "Cargar datos" else p,
+etiqueta_datos = "Cargar datos (usando tus archivos)" if usando_datos_propios else "Cargar datos (usando datos de ejemplo)"
+
+_PAGINA_SLUG = {
+    "Calendario": "calendario", "Vista Tienda": "vista_tienda", "Vista Red": "vista_red",
+    "Simulacros": "simulacros", "Refuerzos entre tiendas": "refuerzos",
+    "Cargar datos": "cargar_datos", "Gestión de usuarios": "gestion_usuarios",
+}
+_PAGINA_ICONO = {
+    "Calendario": "calendar_month", "Vista Tienda": "storefront", "Vista Red": "hub",
+    "Simulacros": "bolt", "Refuerzos entre tiendas": "swap_horiz",
+    "Cargar datos": "upload_file", "Gestión de usuarios": "group",
+}
+_PAGINA_GRUPO = {
+    "Calendario": "Operación", "Vista Tienda": "Operación", "Vista Red": "Operación",
+    "Simulacros": "Operación", "Refuerzos entre tiendas": "Operación",
+    "Cargar datos": "Datos", "Gestión de usuarios": "Administración",
+}
+_ORDEN_GRUPOS = ["Operación", "Datos", "Administración"]
+
+st.session_state.setdefault("pagina_actual", paginas_negocio[0])
+if st.session_state["pagina_actual"] not in paginas_negocio:
+    # el rol/ámbito activo cambió (p. ej. "Ver como") y ya no puede ver la
+    # página que tenía seleccionada -- cae a la primera disponible.
+    st.session_state["pagina_actual"] = paginas_negocio[0]
+
+for _grupo in _ORDEN_GRUPOS:
+    _items_grupo = [p for p in paginas_negocio if _PAGINA_GRUPO.get(p) == _grupo]
+    if not _items_grupo:
+        continue
+    st.sidebar.markdown(f"<div class='cal-nav-grupo'>{_grupo}</div>", unsafe_allow_html=True)
+    for _p in _items_grupo:
+        _es_activa = st.session_state["pagina_actual"] == _p
+        _etiqueta = etiqueta_datos if _p == "Cargar datos" else _p
+        if st.sidebar.button(
+            _etiqueta, key=f"nav_pg_{_PAGINA_SLUG[_p]}", icon=f":material/{_PAGINA_ICONO[_p]}:",
+            width='stretch',
+        ):
+            st.session_state["pagina_actual"] = _p
+            st.rerun()
+pagina = st.session_state["pagina_actual"]
+
+st.sidebar.markdown(
+    "<style>"
+    f"div[class*='st-key-nav_pg_{_PAGINA_SLUG[pagina]}'] button {{"
+    "background:#eaf3ff !important;color:#0071e3 !important;font-weight:600 !important;"
+    "border-color:transparent !important;box-shadow:none !important;}}"
+    "</style>",
+    unsafe_allow_html=True,
 )
+# Punto de estado junto a "Cargar datos" (reemplaza el emoji 🟢/🔵 anterior,
+# que no encajaba con el resto del menú -- mismo significado: verde = ya
+# subiste tus archivos, azul = todavía viendo el ejemplo).
+_color_punto_datos = "#34c759" if usando_datos_propios else "#0071e3"
+st.sidebar.markdown(
+    "<style>"
+    "div[class*='st-key-nav_pg_cargar_datos'] button p {position:relative;}"
+    "div[class*='st-key-nav_pg_cargar_datos'] button::after {"
+    f"content:'';position:absolute;top:9px;right:12px;width:7px;height:7px;"
+    f"border-radius:999px;background:{_color_punto_datos};}}"
+    "</style>",
+    unsafe_allow_html=True,
+)
+
+st.sidebar.divider()
 anio = st.sidebar.selectbox("Año (régimen legal)", [2025, 2026, 2027, 2028, 2029, 2030], index=2)
 
 st.sidebar.divider()
@@ -610,15 +735,23 @@ elif pagina == "Calendario":
                     continue
                 resumen = calendario.resumen_dia(fecha, tienda_id, FECHA_MIN_CAL, FECHA_MAX_CAL, semanas_calculadas)
                 if not resumen["dentro_de_rango"]:
-                    col.button(str(fecha.day), key=f"cal_dia_{fecha.isoformat()}", disabled=True)
+                    col.button(str(fecha.day), key=f"cal_dia_{fecha.isoformat()}_fuera", disabled=True)
                     continue
-                punto = "🟢" if resumen["calculado"] else "🔵"
-                if col.button(f"{fecha.day}\n{punto}", key=f"cal_dia_{fecha.isoformat()}"):
+                _sufijo_estado = "_est-c" if resumen["calculado"] else "_est-p"
+                if col.button(str(fecha.day), key=f"cal_dia_{fecha.isoformat()}{_sufijo_estado}"):
                     st.session_state["cal_vista"] = "semana"
                     st.session_state["cal_semana_sel"] = resumen["semana_inicio"]
                     st.rerun()
-        st.caption("🟢 semana con horario ya calculado · 🔵 semana sin calcular — clic en un día para abrir su semana "
-                   "(domingo a sábado, como opera la tienda).")
+        st.markdown(
+            "<p style='font-size:12px;color:#6e6e73;margin-top:14px;'>"
+            "<span style='display:inline-block;width:6px;height:6px;border-radius:999px;"
+            "background:#34c759;margin-right:4px;'></span>semana con horario ya calculado"
+            "&nbsp;&nbsp;·&nbsp;&nbsp;"
+            "<span style='display:inline-block;width:6px;height:6px;border-radius:999px;"
+            "background:#0071e3;margin-right:4px;'></span>semana sin calcular — clic en un día "
+            "para abrir su semana</p>",
+            unsafe_allow_html=True,
+        )
 
     elif st.session_state["cal_vista"] == "semana":
         semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
