@@ -8,8 +8,10 @@ aportaban nada al negocio en esta etapa). Estructura final:
 - 5 ADMIN, uno por ZONA geografica (agrupando los 10 clusters ficticios del
   catalogo de tiendas en 5 zonas -- ver ZONAS abajo). Cada admin regional
   solo ve/opera las tiendas de su zona, no las 50.
-- 1 MANAGER por tienda (usuario = el propio tienda_id, p.ej. "T001"): ya no
-  hay cuentas de respaldo/flotantes -- una tienda, un usuario de gerente.
+- 1 MANAGER por tienda (usuario "Man001".."Man050", numerado en el mismo
+  orden que el catálogo de tiendas -- Man001 es el gerente de la primera
+  tienda del catálogo, y así sucesivamente): ya no hay cuentas de
+  respaldo/flotantes -- una tienda, un usuario de gerente.
 
 Todos comparten la misma contrasena (ver password_login): el rol y el
 alcance (tienda o zona) los da el propio nombre de usuario, no un selector
@@ -94,10 +96,10 @@ def generar_usuarios(tiendas_df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
             "usuario": f"ADMIN-{zona_id}", "rol": "admin", "tienda_id": None, "zona_id": zona_id,
             "etiqueta": f"Admin regional — zona {info['nombre']} ({zona_id})", "activo": True,
         })
-    for _, tienda in tiendas_df.iterrows():
+    for i, (_, tienda) in enumerate(tiendas_df.reset_index(drop=True).iterrows(), start=1):
         zona_id = zona_de_cluster(tienda["cluster_id"])
         filas.append({
-            "usuario": tienda["tienda_id"], "rol": "manager", "tienda_id": tienda["tienda_id"],
+            "usuario": f"Man{i:03d}", "rol": "manager", "tienda_id": tienda["tienda_id"],
             "zona_id": zona_id, "etiqueta": f"Gerente de {tienda['tienda_id']}", "activo": True,
         })
     return pd.DataFrame(filas)

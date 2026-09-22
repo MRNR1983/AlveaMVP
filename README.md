@@ -20,7 +20,7 @@ todos.
 | --- | --- |
 | `SADMIN` | Super Admin — ve todo, puede "ver como" cualquier perfil sin volver a loguearse |
 | `ADMIN-Z1` .. `ADMIN-Z5` | Admin regional — una cuenta por zona (CDMX, Occidente, Noreste, Centro, Sureste), ve/gestiona solo las tiendas de su zona |
-| `T001` .. `T050` | Gerente de esa tienda (el usuario es el propio ID de tienda) — solo ve su tienda |
+| `Man001` .. `Man050` | Gerente de tienda — numerado en el mismo orden que el catálogo (Man001 = primera tienda, etc.); solo ve su tienda |
 
 Cada tienda tiene un único usuario de gerente (no hay cuentas de respaldo).
 Las 5 zonas de Admin agrupan los 10 clústeres geográficos del catálogo de

@@ -14,7 +14,7 @@ actual.
 
 **Login:** usuario + contraseña (el usuario ya dice el rol, no hay
 selector aparte). Usuario `SADMIN`, `ADMIN-Z1`..`ADMIN-Z5` (por zona), o
-`T001`..`T050` (una tienda, un gerente) — contraseña **`3.14159265358`**
+`Man001`..`Man050` (un gerente por tienda) — contraseña **`3.14159265358`**
 para cualquiera (primeros dígitos de π — público a propósito, ver README
 para el detalle completo).
 

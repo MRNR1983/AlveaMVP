@@ -180,3 +180,15 @@ como", ADMIN-Z1 ve solo sus ~12 tiendas (CDMX) en Vista Red, un manager
 estilo `T001-U1` ya no existe. Roster total: 56 usuarios (1 + 5 + 50),
 antes eran 152. README.md y docs/index.md actualizados con el nuevo
 formato de credenciales.
+
+## Ajuste: usuarios de gerente "Man001".."Man050" (21-sep-2026)
+Corrección sobre el commit anterior: el usuario del gerente ya no es el
+propio `tienda_id` (`T001`) -- ahora es `Man001`..`Man050`, numerado en el
+mismo orden que el catálogo de tiendas (Man001 = primera tienda del
+catálogo, etc.). `generar_usuarios()` genera el número por posición
+(`enumerate` sobre `tiendas_df`), no por el `tienda_id` en sí. El nombre
+mostrado en la sidebar tras loguearse sigue siendo el `tienda_id` real
+(no `Man001`), así que el gerente sigue viendo claramente en qué tienda
+está. Verificado con `AppTest`: `Man001` -> tienda de la primera fila del
+catálogo, `man050` (minúsculas) también entra, `T001` ya no es un usuario
+válido.

@@ -152,7 +152,7 @@ def _pantalla_login() -> None:
     with col_mid:
         st.markdown("### Alvea PMV")
         with st.form("form_login", border=False):
-            usuario_txt = st.text_input("Usuario", placeholder="Usuario (ej. SADMIN, ADMIN-Z1, T001)",
+            usuario_txt = st.text_input("Usuario", placeholder="Usuario (ej. SADMIN, ADMIN-Z1, Man001)",
                                          label_visibility="collapsed")
             password = st.text_input("Contraseña", type="password", placeholder="Contraseña",
                                       label_visibility="collapsed")
