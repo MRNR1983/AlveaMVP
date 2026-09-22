@@ -726,16 +726,17 @@ elif pagina == "Calendario":
                 clave_edicion = (tienda_id, fecha_d)
 
                 slots_originales: dict[str, str] = {}
-                contenedores: dict[str, list[str]] = {}
+                contenedores: list[dict[str, object]] = []
                 for i, chip in chips.iterrows():
                     slot_id = f"Turno {i + 1} · {int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00"
-                    contenedores[slot_id] = [chip["empleado_id"]]
+                    contenedores.append({"header": slot_id, "items": [chip["empleado_id"]]})
                     slots_originales[slot_id] = chip["empleado_id"]
 
                 asignados_hoy = set(chips["empleado_id"])
-                contenedores["Plantilla (sin turno hoy)"] = [
-                    e for e in empleados_tienda if e not in asignados_hoy
-                ]
+                contenedores.append({
+                    "header": "Plantilla (sin turno hoy)",
+                    "items": [e for e in empleados_tienda if e not in asignados_hoy],
+                })
 
                 resultado_drag = sort_items(
                     contenedores, multi_containers=True, direction="horizontal",
@@ -754,8 +755,11 @@ elif pagina == "Calendario":
 
                 edicion_dia: dict[str, str] = {}
                 if resultado_drag:
+                    ocupantes_por_slot = {
+                        contenedor["header"]: contenedor["items"] for contenedor in resultado_drag
+                    }
                     for slot_id, emp_original in slots_originales.items():
-                        ocupante = resultado_drag.get(slot_id, [])
+                        ocupante = ocupantes_por_slot.get(slot_id, [])
                         nuevo_emp = ocupante[0] if ocupante else None
                         if nuevo_emp and nuevo_emp != emp_original:
                             edicion_dia[emp_original] = nuevo_emp
