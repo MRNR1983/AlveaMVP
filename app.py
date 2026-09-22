@@ -219,7 +219,7 @@ div[class*="st-key-cal_dia_"] button:hover:not(:disabled) {
 div[class*="st-key-cal_dia_"] button:disabled {
     background: #fbfbfd;
     border-color: #e5e5ea;
-    color: #86868b;
+    color: #6e6e73;
 }
 /* celda vacía de relleno (antes / después del mes) */
 .cal-celda-vacia {
@@ -235,7 +235,7 @@ div[class*="st-key-cal_dia_"] button:disabled {
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #86868b;
+    color: #6e6e73;
     padding-bottom: 0.35rem;
 }
 /* flechas de navegación de mes (redondas, discretas) */
@@ -623,9 +623,10 @@ elif pagina == "Calendario":
     elif st.session_state["cal_vista"] == "semana":
         semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
         semana_fin = semana_inicio + timedelta(days=6)
-        st.markdown(f"<p style='color:#86868b;font-size:0.85rem;margin-bottom:0'>"
+        st.markdown(f"<p style='color:#6e6e73;font-size:0.85rem;margin-bottom:0'>"
                     f"{calendario.NOMBRES_MES[cal_mes]} {cal_anio}</p>", unsafe_allow_html=True)
-        st.subheader(f"Semana del {semana_inicio:%d-%b} al {semana_fin:%d-%b-%Y}")
+        st.subheader(f"Semana del {semana_inicio.day:02d}-{calendario.NOMBRES_MES[semana_inicio.month][:3]} "
+                     f"al {semana_fin.day:02d}-{calendario.NOMBRES_MES[semana_fin.month][:3]}-{semana_fin.year}")
 
         clave = (tienda_id, semana_inicio)
         if not calendario.semana_dentro_de_rango(semana_inicio, FECHA_MIN_CAL, FECHA_MAX_CAL):
@@ -661,7 +662,7 @@ elif pagina == "Calendario":
                     st.markdown(
                         f"<div style='text-align:center'>"
                         f"<span style='font-size:0.7rem;font-weight:600;letter-spacing:.04em;"
-                        f"text-transform:uppercase;color:#86868b'>{calendario.DIAS_SEMANA_ABREV[i]}</span><br>"
+                        f"text-transform:uppercase;color:#6e6e73'>{calendario.DIAS_SEMANA_ABREV[i]}</span><br>"
                         f"<span style='font-size:1.4rem;font-weight:600;color:#1d1d1f'>{fecha_d.day}</span></div>",
                         unsafe_allow_html=True,
                     )
@@ -669,7 +670,7 @@ elif pagina == "Calendario":
                     if not horario_df.empty:
                         horas_dia = horario_df[pd.to_datetime(horario_df["fecha"]).dt.date == fecha_d]
                         n_personas = horas_dia["empleado_id"].nunique()
-                    st.markdown(f"<p style='text-align:center;color:#86868b;font-size:0.78rem;margin:0.2rem 0'>"
+                    st.markdown(f"<p style='text-align:center;color:#6e6e73;font-size:0.78rem;margin:0.2rem 0'>"
                                 f"{n_personas} personas</p>", unsafe_allow_html=True)
                     if st.button("Ver día", key=f"cal_verdia_{fecha_d.isoformat()}", width='stretch'):
                         st.session_state["cal_vista"] = "dia"
@@ -680,10 +681,12 @@ elif pagina == "Calendario":
         semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
         fecha_d = st.session_state.get("cal_dia_sel", semana_inicio)
         nombre_dia = calendario.DIAS_SEMANA_ABREV[(fecha_d.weekday() + 1) % 7]
-        st.markdown(f"<p style='color:#86868b;font-size:0.85rem;margin-bottom:0'>"
-                    f"Semana del {semana_inicio:%d-%b} al {(semana_inicio + timedelta(days=6)):%d-%b-%Y}</p>",
+        _semana_fin_dia = semana_inicio + timedelta(days=6)
+        st.markdown(f"<p style='color:#6e6e73;font-size:0.85rem;margin-bottom:0'>"
+                    f"Semana del {semana_inicio.day:02d}-{calendario.NOMBRES_MES[semana_inicio.month][:3]} "
+                    f"al {_semana_fin_dia.day:02d}-{calendario.NOMBRES_MES[_semana_fin_dia.month][:3]}-{_semana_fin_dia.year}</p>",
                     unsafe_allow_html=True)
-        st.subheader(f"{nombre_dia} {fecha_d:%d de %B, %Y}")
+        st.subheader(f"{nombre_dia} {fecha_d.day:02d} de {calendario.NOMBRES_MES[fecha_d.month]}, {fecha_d.year}")
 
         clave = (tienda_id, semana_inicio)
         reporte = st.session_state.get("cache_calendario", {}).get(clave)
