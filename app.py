@@ -59,7 +59,12 @@ def cargar_datos_ejemplo() -> dict[str, pd.DataFrame]:
         # Dataset viejo (de antes del calendario) -- traía solo 7 días. Se
         # detecta por el rango de fechas y se regenera al año completo.
         rango_trafico = pd.to_datetime(datos["trafico"]["fecha"])
-        if rango_trafico.max() - rango_trafico.min() < pd.Timedelta(days=30):
+        # Dataset viejo (de antes de la columna "nombre") -- se detecta por
+        # el esquema y se regenera; si no, los CSV cacheados en disco de una
+        # corrida anterior nunca recogen columnas nuevas del generador
+        # aunque se redeploye el código (el CSV en disco gana la carrera).
+        _esquema_desactualizado = "nombre" not in datos["plantilla"].columns
+        if rango_trafico.max() - rango_trafico.min() < pd.Timedelta(days=30) or _esquema_desactualizado:
             for archivo in ARCHIVOS_DATASET:
                 (DATA_DIR / f"{archivo}.csv").unlink(missing_ok=True)
         else:
