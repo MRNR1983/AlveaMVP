@@ -385,13 +385,51 @@ def generar_ventas(trafico_df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
     return ventas
 
 
+# Nombres 100% sintéticos (marca ficticia) para que la plantilla se vea como
+# personas reales en la UI (chips del calendario, tablas) en vez de solo
+# IDs -- no son datos de ninguna persona real, son un pool genérico de
+# nombres y apellidos comunes en México, combinados al azar y reproducibles
+# con la misma semilla que el resto del dataset.
+_NOMBRES_PILA = [
+    "María", "José", "Juan", "Ana", "Luis", "Guadalupe", "Carlos", "Laura",
+    "Miguel", "Rosa", "Francisco", "Patricia", "Jorge", "Elena", "Ricardo",
+    "Sofía", "Alejandro", "Daniela", "Fernando", "Andrea", "Roberto", "Diana",
+    "Antonio", "Verónica", "Manuel", "Alejandra", "Javier", "Claudia",
+    "Sergio", "Adriana", "Raúl", "Mónica", "Arturo", "Gabriela", "Óscar",
+    "Paola", "Eduardo", "Lucía", "Ramón", "Karla", "Ángel", "Fernanda",
+    "Víctor", "Itzel", "Mario", "Brenda", "Salvador", "Cecilia", "Rubén",
+    "Silvia",
+]
+_APELLIDOS = [
+    "García", "Martínez", "López", "Hernández", "González", "Pérez",
+    "Sánchez", "Ramírez", "Torres", "Flores", "Rivera", "Gómez", "Díaz",
+    "Reyes", "Cruz", "Morales", "Ortiz", "Gutiérrez", "Chávez", "Ramos",
+    "Jiménez", "Vázquez", "Castillo", "Romero", "Mendoza", "Aguilar",
+    "Medina", "Herrera", "Vargas", "Castro", "Ruiz", "Álvarez", "Juárez",
+    "Delgado", "Guerrero", "Rojas", "Núñez", "Luna", "Contreras", "Silva",
+]
+
+
+def _generar_nombres(n: int, rng: np.random.Generator) -> list[str]:
+    """"Nombre Apellido" sintéticos, uno por fila de plantilla (n puede ser
+    mayor al tamaño de los pools -- se repiten combinaciones, no hay
+    problema porque la identidad real de cada empleado sigue siendo su
+    empleado_id, el nombre es solo para que la UI sea legible)."""
+    pila = rng.choice(_NOMBRES_PILA, size=n)
+    apellido = rng.choice(_APELLIDOS, size=n)
+    return [f"{p} {a}" for p, a in zip(pila, apellido)]
+
+
 def generar_plantilla(tiendas_df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
     """Genera la plantilla: exactamente 80 empleados por tienda (4000 filas).
 
     Distribución fija de roles por tienda (CONFIG["plantilla"]["roles"],
     suma 80): cajas=26, piso_reposicion=28, perecederos=14, almacen=12.
     Salario diario por rol en rango 200-450 MXN (supuesto documentado),
-    antigüedad 0-120 meses y 85 % de disponibilidad completa.
+    antigüedad 0-120 meses y 85 % de disponibilidad completa. Cada fila
+    también lleva un "nombre" sintético (ver _generar_nombres) para que la
+    UI muestre personas, no solo IDs -- el empleado_id sigue siendo la
+    identidad real que usa el resto del pipeline.
     """
     cfg = CONFIG["plantilla"]
     rng = _rng(seed)
@@ -412,8 +450,10 @@ def generar_plantilla(tiendas_df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
                                   cfg["antiguedad_meses_rango"][1] + 1, size=n)
         parcial = rng.choice(["parcial_manana", "parcial_tarde"], size=n)
         disponibilidad = np.where(rng.random(n) < cfg["disponibilidad_completa"], "completa", parcial)
+        nombres = _generar_nombres(n, rng)
         filas.append(pd.DataFrame({
             "empleado_id": [f"E{seq + k:05d}" for k in range(n)],
+            "nombre": nombres,
             "tienda_id": tienda.tienda_id,
             "rol": roles,
             "tipo_contrato": "completo",

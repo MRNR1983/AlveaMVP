@@ -608,7 +608,17 @@ elif pagina == "Vista Red":
             formato=None if formato_sel == "(todos)" else formato_sel,
         )
         st.bar_chart(filtrado.set_index("tienda_id")["ahorro_pct"])
-        st.dataframe(filtrado, width='stretch')
+        st.dataframe(
+            filtrado, width='stretch', hide_index=True,
+            column_config={
+                "tienda_id": "Tienda", "cluster_id": "Clúster", "formato": "Formato",
+                "ahorro_mxn": st.column_config.NumberColumn("Ahorro (MXN/semana)", format="$%.0f"),
+                "ahorro_pct": st.column_config.NumberColumn("Ahorro %", format="percent"),
+                "pct_del_techo_capturado": st.column_config.NumberColumn("% del techo capturado", format="percent"),
+                "status_solver": "Status del solver",
+                "cumple_minimo_8pct": "¿Cumple mínimo 8%?",
+            },
+        )
 
         st.download_button(
             "⬇️ Descargar ranking de tiendas (CSV)",
@@ -646,7 +656,20 @@ elif pagina == "Vista Tienda":
         bc2.metric("Brecha vs. techo (MXN/semana)", f"${brecha.get('brecha_mxn', 0):,.0f}")
 
         st.write("**Horario propuesto (primeras filas)**")
-        st.dataframe(reporte["propuesta"]["horario_df"].head(50), width='stretch')
+        _horario_vista = reporte["propuesta"]["horario_df"].head(50).copy()
+        _plantilla_vista = datos["plantilla"].loc[datos["plantilla"]["tienda_id"] == tienda_id]
+        if "nombre" in _plantilla_vista.columns and "empleado_id" in _horario_vista.columns:
+            _horario_vista.insert(
+                1, "nombre",
+                _horario_vista["empleado_id"].map(dict(zip(_plantilla_vista["empleado_id"], _plantilla_vista["nombre"]))),
+            )
+        st.dataframe(
+            _horario_vista, width='stretch', hide_index=True,
+            column_config={
+                "empleado_id": "ID", "nombre": "Nombre", "fecha": "Fecha", "hora": "Hora",
+                "trabajando": "Trabajando", "en_pausa": "En pausa",
+            },
+        )
 
         dl1, dl2 = st.columns(2)
         dl1.download_button(
@@ -863,23 +886,51 @@ elif pagina == "Calendario":
                 chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
                 chips = chips.sort_values("hora_inicio").reset_index(drop=True)
 
+                # Nombre por empleado_id, con fallback al propio ID -- si el
+                # gerente subió su propia plantilla (página "Cargar datos")
+                # puede no traer columna "nombre", y la UI no debe romperse
+                # por eso.
+                if "nombre" in plantilla_t.columns:
+                    _nombre_por_id = dict(zip(plantilla_t["empleado_id"], plantilla_t["nombre"]))
+                else:
+                    _nombre_por_id = {}
+
+                def _nombre(eid: str) -> str:
+                    return _nombre_por_id.get(eid, eid)
+
+                # El widget de arrastre (streamlit-sortables) solo puede
+                # mostrar el texto que le pasamos como "item" -- no soporta
+                # tooltips nativos por elemento. En vez de un hover que no
+                # se puede implementar aquí, el chip muestra el nombre Y el
+                # ID directamente (dos líneas), y usamos esa misma etiqueta
+                # como identidad del chip en el widget: sigue siendo única
+                # (el ID nunca se repite) así que toda la lógica de abajo
+                # (quién quedó en qué turno) funciona igual, solo que ahora
+                # sobre etiquetas "Nombre\nID" en vez de IDs a secas.
+                def _etiqueta(eid: str) -> str:
+                    return f"{_nombre(eid)}\n{eid}"
+
+                def _id_desde_etiqueta(etiqueta: str) -> str:
+                    return etiqueta.rsplit("\n", 1)[-1]
+
                 st.write(f"**{len(chips)} turnos** — arrastra un nombre desde *Plantilla* hacia un turno para reasignarlo. "
                          f"Si el turno ya tenía a alguien, puede quedar visualmente junto al nuevo nombre; "
                          f"el sistema toma al que acabas de soltar como el asignado.")
                 empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
                 clave_edicion = (tienda_id, fecha_d)
 
-                slots_originales: dict[str, str] = {}
+                slots_originales: dict[str, str] = {}  # slot_id -> etiqueta original
                 contenedores: list[dict[str, object]] = []
                 for i, chip in chips.iterrows():
                     slot_id = f"Turno {i + 1} · {int(chip['hora_inicio'])}:00–{int(chip['hora_fin'])}:00"
-                    contenedores.append({"header": slot_id, "items": [chip["empleado_id"]]})
-                    slots_originales[slot_id] = chip["empleado_id"]
+                    etiqueta = _etiqueta(chip["empleado_id"])
+                    contenedores.append({"header": slot_id, "items": [etiqueta]})
+                    slots_originales[slot_id] = etiqueta
 
                 asignados_hoy = set(chips["empleado_id"])
                 contenedores.append({
                     "header": "Plantilla (sin turno hoy)",
-                    "items": [e for e in empleados_tienda if e not in asignados_hoy],
+                    "items": [_etiqueta(e) for e in empleados_tienda if e not in asignados_hoy],
                 })
 
                 resultado_drag = sort_items(
@@ -892,27 +943,35 @@ elif pagina == "Calendario":
                     .sortable-container-header{font-size:0.7rem;font-weight:600;
                         color:#6e6e73;padding:4px 6px;}
                     .sortable-item{background:#f5f5f7;border:1px solid #ececec;
-                        border-radius:999px;padding:5px 12px;font-size:0.85rem;
-                        font-weight:600;color:#1d1d1f;margin:3px;cursor:grab;}
+                        border-radius:12px;padding:6px 12px;font-size:0.82rem;
+                        font-weight:600;color:#1d1d1f;margin:3px;cursor:grab;
+                        white-space:pre-line;line-height:1.3;text-align:center;}
                     """,
                 )
 
-                edicion_dia: dict[str, str] = {}
+                edicion_dia_etiquetas: dict[str, str] = {}
                 if resultado_drag:
                     ocupantes_por_slot = {
                         contenedor["header"]: contenedor["items"] for contenedor in resultado_drag
                     }
-                    for slot_id, emp_original in slots_originales.items():
+                    for slot_id, etq_original in slots_originales.items():
                         ocupante = ocupantes_por_slot.get(slot_id, [])
                         # Si sueltas a alguien en un turno que ya tenía ocupante,
                         # ambos quedan momentáneamente en la misma casilla (el
                         # componente no expulsa al anterior). Gana quien llegó
                         # nuevo: tomamos al primero de la lista que NO sea el
                         # empleado original de ese turno.
-                        candidatos_nuevos = [e for e in ocupante if e != emp_original]
-                        nuevo_emp = candidatos_nuevos[0] if candidatos_nuevos else None
-                        if nuevo_emp and nuevo_emp != emp_original:
-                            edicion_dia[emp_original] = nuevo_emp
+                        candidatos_nuevos = [e for e in ocupante if e != etq_original]
+                        nuevo_etq = candidatos_nuevos[0] if candidatos_nuevos else None
+                        if nuevo_etq and nuevo_etq != etq_original:
+                            edicion_dia_etiquetas[etq_original] = nuevo_etq
+                # De vuelta a empleado_id puros -- todo lo que sigue (armar
+                # editado_df, calificar_edicion_manual) espera IDs, no las
+                # etiquetas "Nombre\nID" que solo existen para el widget.
+                edicion_dia: dict[str, str] = {
+                    _id_desde_etiqueta(orig): _id_desde_etiqueta(nuevo)
+                    for orig, nuevo in edicion_dia_etiquetas.items()
+                }
                 st.session_state.setdefault("cal_ediciones", {})
                 st.session_state["cal_ediciones"][clave_edicion] = edicion_dia
 
@@ -922,11 +981,14 @@ elif pagina == "Calendario":
                     # dos nombres en la misma casilla (ver comentario arriba),
                     # así que esta lista es la fuente de verdad sin ambigüedad
                     # visual sobre quién quedó asignado.
-                    _slot_por_original = {v: k for k, v in slots_originales.items()}
+                    _slot_por_original_id = {
+                        _id_desde_etiqueta(v): k for k, v in slots_originales.items()
+                    }
                     _filas_html = "".join(
                         f"<div style='font-size:13px;color:#1d1d1f;padding:3px 0;'>"
-                        f"<span style='color:#6e6e73'>{_slot_por_original.get(_orig, '?')}:</span>&nbsp; "
-                        f"<s style='color:#6e6e73'>{_orig}</s> → <b>{_nuevo}</b></div>"
+                        f"<span style='color:#6e6e73'>{_slot_por_original_id.get(_orig, '?')}:</span>&nbsp; "
+                        f"<s style='color:#6e6e73'>{_nombre(_orig)} ({_orig})</s> → "
+                        f"<b>{_nombre(_nuevo)} ({_nuevo})</b></div>"
                         for _orig, _nuevo in edicion_dia.items()
                     )
                     st.markdown(
@@ -958,7 +1020,24 @@ elif pagina == "Calendario":
                     cc1.metric("Delta costo (MXN/semana)", f"${calif['delta_costo_mxn']:,.0f}")
                     cc2.metric("Horas pico sin cubrir (nuevas)", calif["delta_horas_deficit_pico"])
                     if calif["cambios_por_empleado"]:
-                        st.dataframe(pd.DataFrame(calif["cambios_por_empleado"]), width='stretch')
+                        _tabla_cambios = pd.DataFrame(calif["cambios_por_empleado"])
+                        if "empleado_id" in _tabla_cambios.columns:
+                            _tabla_cambios.insert(
+                                1, "nombre", _tabla_cambios["empleado_id"].map(_nombre),
+                            )
+                        st.dataframe(
+                            _tabla_cambios, width='stretch', hide_index=True,
+                            column_config={
+                                "empleado_id": "ID",
+                                "nombre": "Nombre",
+                                "horas_antes": "Horas antes",
+                                "horas_despues": "Horas después",
+                                "entro_a_triple": "¿Entró a triple?",
+                                "delta_costo_mxn": st.column_config.NumberColumn(
+                                    "Delta costo (MXN)", format="$%.2f",
+                                ),
+                            },
+                        )
 
             st.caption("Vista de edición ligera del PMV: solo reasignación de turnos ya generados por el "
                        "optimizador, calificada contra el óptimo legal — no reemplaza al optimizador.")
