@@ -576,6 +576,12 @@ elif pagina == "Vista Red":
     if modo_avanzado:
         n_tiendas = st.slider("Tiendas a calcular (modo avanzado: reduce para pruebas rápidas)",
                                1, len(tiendas_visibles_df), min(5, len(tiendas_visibles_df)))
+    st.caption(
+        "Cada tienda resuelve un problema de optimización de ~10s; calcular la red completa puede "
+        "tardar varios minutos. La barra de abajo muestra qué tienda se está calculando. Si navegas "
+        "a otra página a la mitad, la barra desaparece, pero las tiendas que ya terminaron quedan en "
+        "caché -- al volver y calcular de nuevo, esas no se vuelven a resolver, solo las que faltaban."
+    )
     if st.button("Calcular ahorro de la red", type="primary"):
         ids = list(tiendas_visibles_df["tienda_id"].head(n_tiendas))
         resultados = calcular_red(ids, anio, TIEMPO_LIMITE_SEG_DEFAULT, datos)
@@ -911,6 +917,26 @@ elif pagina == "Calendario":
                 st.session_state["cal_ediciones"][clave_edicion] = edicion_dia
 
                 if edicion_dia:
+                    # Confirmación textual e inequívoca de qué cambió -- el
+                    # widget de arrastre en sí puede mostrar momentáneamente
+                    # dos nombres en la misma casilla (ver comentario arriba),
+                    # así que esta lista es la fuente de verdad sin ambigüedad
+                    # visual sobre quién quedó asignado.
+                    _slot_por_original = {v: k for k, v in slots_originales.items()}
+                    _filas_html = "".join(
+                        f"<div style='font-size:13px;color:#1d1d1f;padding:3px 0;'>"
+                        f"<span style='color:#6e6e73'>{_slot_por_original.get(_orig, '?')}:</span>&nbsp; "
+                        f"<s style='color:#6e6e73'>{_orig}</s> → <b>{_nuevo}</b></div>"
+                        for _orig, _nuevo in edicion_dia.items()
+                    )
+                    st.markdown(
+                        "<div style='border:1px solid #d2d2d7;border-radius:10px;"
+                        "padding:10px 14px;background:#f9fafb;margin-bottom:10px;'>"
+                        "<div style='font-size:12.5px;font-weight:600;color:#1d1d1f;"
+                        "margin-bottom:4px;'>Cambios pendientes (aún sin calificar)</div>"
+                        f"{_filas_html}</div>",
+                        unsafe_allow_html=True,
+                    )
                     st.write(f"**{len(edicion_dia)} turno(s) reasignado(s) sin calificar todavía.**")
                     if st.button("Calificar cambios", type="primary"):
                         editado_df = horario_df.copy()
