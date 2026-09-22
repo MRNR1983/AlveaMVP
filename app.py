@@ -493,7 +493,12 @@ with st.sidebar.expander("Mi correo (para notificaciones)", icon=":material/mail
             DATA_DIR, auth_real["usuario"], auth_real["rol"], _alcance_tipo_correo, _alcance_valor_correo,
             "correo_actualizado",
         )
-        st.success("Correo guardado.")
+        # st.toast (no st.success) porque el st.rerun() de abajo es
+        # necesario -- sin él, el widget arriba (value=_correo_actual)
+        # se queda mostrando el valor viejo hasta la siguiente interacción
+        # -- y un st.success() normal desaparece al hacer rerun antes de
+        # que la persona alcance a verlo; st.toast sí sobrevive al rerun.
+        st.toast("Correo guardado.", icon=":material/check_circle:")
         st.rerun()
     if not notificaciones.correo_configurado():
         st.caption("Envío por correo: no configurado todavía (falta SMTP en Secrets de la app).")
