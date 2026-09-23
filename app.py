@@ -1264,12 +1264,31 @@ elif pagina == "Calendario":
                 resultado_drag = sort_items(
                     contenedores, multi_containers=True, direction="horizontal",
                     key=f"cal_dnd_{tienda_id}_{fecha_d.isoformat()}",
+                    # NOTA (23-sep-2026): la hoja de estilos que trae el componente
+                    # (streamlit_sortables) solo define flex/wrap para la clase
+                    # ".sortable-component.vertical" -- con direction="horizontal"
+                    # (como aquí) esa regla no aplica y ".sortable-component" queda
+                    # sin "display:flex", así que cada turno caía en su propio
+                    # renglón a todo lo ancho (un nombre solo, mucho espacio en
+                    # blanco) en vez de acomodarse en cuadrícula. Forzamos flex
+                    # explícitamente y le damos un ancho fijo a cada turno para
+                    # que varios quepan por fila; la última casilla (Plantilla,
+                    # siempre al final de `contenedores`) se deja a todo lo ancho
+                    # y con estilo punteado para distinguirla como "banco" de
+                    # gente sin turno, no como un turno más.
                     custom_style="""
-                    .sortable-component{gap:10px;flex-wrap:wrap}
+                    .sortable-component{display:flex;flex-wrap:wrap;gap:10px;
+                        align-items:flex-start}
                     .sortable-container{background:#ffffff;border:1px solid #d2d2d7;
-                        border-radius:10px;min-width:160px;padding:6px;}
-                    .sortable-container-header{font-size:0.7rem;font-weight:600;
-                        color:#6e6e73;padding:4px 6px;}
+                        border-radius:10px;flex:0 1 210px;min-width:180px;
+                        max-width:230px;padding:8px;}
+                    .sortable-container:last-child{flex:1 1 100%;max-width:100%;
+                        background:#fafafa;border-style:dashed;border-color:#c7c7cc;}
+                    .sortable-container-header{font-size:0.72rem;font-weight:700;
+                        color:#1d1d1f;padding:4px 6px 8px;border-bottom:1px solid #f0f0f2;
+                        margin-bottom:4px;}
+                    .sortable-container-body{width:100%;min-height:44px;
+                        display:flex;flex-wrap:wrap;}
                     .sortable-item{background:#f5f5f7;border:1px solid #ececec;
                         border-radius:12px;padding:6px 12px;font-size:0.82rem;
                         font-weight:600;color:#1d1d1f;margin:3px;cursor:grab;
