@@ -20,29 +20,28 @@ para el detalle completo).
 
 ## Empieza aquí
 
+- [Manual de uso (toda la app) + checklist de verificación](manual.html)
 - [README — cómo correrlo, estructura, supuestos](https://github.com/MRNR1983/AlveaMVP/blob/main/README.md)
 - [Guion de demo (45 min con el CEO/CFO)](guion_demo.html)
 - [Registro de uso de herramientas agénticas](registro_agentic.html)
 
 ## Estado del PMV
 
-- 83 pruebas unitarias, todas pasando.
-- App Streamlit verificada extremo a extremo (sin excepciones en las 7 pantallas,
-  incluyendo el flujo completo del calendario: mes → semana → día → edición
-  de turno → calificación).
-- Pantalla de arranque del gerente: calendario mes/semana/día sobre el año
-  completo (ver README para la regla de "mes gratis, semana bajo demanda").
-- **Pendiente antes de la demo real**: calibrar el ahorro (salió >60% en
-  corridas chicas de prueba, hay que correr las 50 tiendas y revisar
-  `demanda_personal.py` / `escenario_base.py`).
-- **Pendiente de validación legal**: interpretación del tramo de tiempo
-  extra al triple (arts. 66/68 LFT reformados).
-- Docker incluido pero no verificado en la sandbox de desarrollo (sin
-  demonio Docker disponible ahí) — verificar en local antes de la demo.
+- 95 pruebas unitarias, todas pasando; cada página verificada sin errores
+  para Gerente, Admin de zona y Super Admin.
+- Horario desde hoy hasta diciembre de 2030; la jornada legal de cada
+  semana sale sola de su fecha (48 → 40 h).
+- Optimizador con 4 turnos fijos por tienda; cambios manuales persona →
+  turno, con bloqueo legal y calificación.
+- Ahorro calibrado: ~11–21% por tienda en 2026 y ~6–8% en 2030 (supuesto
+  explícito: la plantilla actual opera al 60% de su capacidad en una semana
+  promedio).
+- **Pendiente de validación legal**: tramo de tiempo extra al triple
+  (arts. 66/68 LFT reformados).
+- Docker incluido pero no verificado en la sandbox de desarrollo.
 
 ## Fuera de alcance del PMV
 
-Traslado físico de personal entre tiendas como decisión legal, integración
-con nómina/registro electrónico de jornada, pronóstico de demanda con ML,
-edición de turnos más allá de reasignar (drag-and-drop real, edición
-masiva). Detalle completo en el README.
+Turnos nocturnos/mixtos, integración con nómina/registro electrónico de
+jornada, pronóstico de demanda con ML, simulacros y préstamo de personal
+entre tiendas (código conservado, sin interfaz). Detalle en el README.

@@ -275,3 +275,35 @@ Pendiente explícito, no resuelto en esta iteración: edición real por
 arrastre (drag-and-drop) -- Streamlit no lo soporta nativamente sin un
 componente de terceros; el PMV usa selectboxes por chip como sustituto
 funcional, documentado como límite conocido en el README.
+
+
+## 24-sep-2026 — Turnos fijos, horizonte 2026–2030 y rediseño de la interfaz
+
+Pedido: simplificar (turnos legibles, no micro-turnos), calendario desde
+hoy con la jornada bajando por año, UX nueva y enfocada (sin simulador),
+y revisión + manual de todo.
+
+1. **Optimizador** (`optimizador.py`): el modelo pasó de decidir hora por
+   hora a asignar a cada persona, cada día, uno de 4 turnos fijos de 8 h
+   (`catalogo_turnos`) o descanso. Descansos escalonados (el primer
+   intento dejaba dos turnos descansando a la misma hora -> INFEASIBLE).
+   Si la cobertura de pico dura es imposible, reintenta con penalización
+   alta y lo reporta (`pico_relajado`, `horas_subdotacion_pico`).
+2. **Calibración** (`demanda_personal.py`): la demanda sintética era
+   30–55% de la capacidad de 80 FTE -> ahorro irreal de 50–70%. Se agregó
+   un factor por rol y formato con supuesto explícito (60% de capacidad
+   en semana promedio). Se probó 85% y se descartó: dejaba la apertura
+   sin gente.
+3. **Datos por semana** (`datos_sinteticos.generar_semana`): cada semana
+   se genera al abrirla (reproducible), en vez de un archivo de ~150 MB.
+4. **Interfaz** (`app.py`, reescrita): menú por rol, usuario y salida
+   abajo, semana activa compartida, botón Hoy, Mes/Semana/Día, cambio de
+   turno por selectores con bloqueo legal y Deshacer, gráfica de
+   cobertura. Se quitaron Simulacros, Refuerzos, Modo avanzado y el
+   arrastre (streamlit-sortables).
+
+Verificación: 95 pruebas (11 nuevas en `test_turnos_fijos.py`), AppTest
+por rol en todas las páginas, AppTest del cambio de turno (permitido y
+bloqueado por 7.º día), AppTest del régimen en semanas de 2026/2027/2029/
+2030, y capturas en navegador (Chromium) de login, Mes, Semana, Día con
+cambio, Mi tienda y Resumen de zona.

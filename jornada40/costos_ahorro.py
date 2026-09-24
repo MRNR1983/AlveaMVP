@@ -328,8 +328,10 @@ def calificar_edicion_manual(
     def _deficit_pico(horario_df: pd.DataFrame) -> int:
         if horario_df.empty or "es_pico" not in demanda_tienda_df.columns:
             return 0
-        cobertura = (horario_df[horario_df["trabajando"]]
-                     .groupby(["fecha", "hora"]).size())
+        activos = horario_df[horario_df["trabajando"]]
+        if "en_pausa" in activos.columns:  # quien está en su descanso no cubre esa hora
+            activos = activos[~activos["en_pausa"].astype(bool)]
+        cobertura = activos.groupby(["fecha", "hora"]).size()
         pico = demanda_tienda_df[demanda_tienda_df["es_pico"]]
         requerido = pico.groupby(["fecha", "hora"])["personas_requeridas"].sum()
         deficit = 0

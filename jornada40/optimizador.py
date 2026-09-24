@@ -1,23 +1,21 @@
 """Optimizador de horario semanal por tienda con OR-Tools CP-SAT.
 
-Arma el horario de UNA tienda (domingo a sábado) minimizando el costo
-laboral, con las reglas legales de jornada40.reglas como restricciones
+Arma el horario de UNA tienda (domingo a sábado) asignando a cada persona,
+cada día, UNO de 4 turnos fijos (ver catalogo_turnos) o descanso,
+minimizando el costo laboral, con las reglas legales de jornada40.reglas como restricciones
 DURAS del modelo, y la cobertura de la demanda (jornada40.demanda_personal)
 como restricción dura en franjas pico y suave (penalizada) fuera de pico.
 
 SIMPLIFICACIONES DEL PMV (documentadas a propósito, no son bugs):
-  - La jornada diaria por tipo (diurna/nocturna/mixta, art. 61) se colapsa
-    a un único tope diario ORDINARIO genérico (se usa el valor "diurna" de
-    reglas.MAPA_JORNADA_DIARIA), más el tope diario TOTAL duro de 12h
-    (ordinaria + extra, art. 68). Distinguir night/mixed shifts por
-    empleado queda como TODO de Fase 2 — reglas.py sí expone las tres
-    reglas por separado (MAPA_JORNADA_DIARIA), este módulo solo usa la
-    diurna como aproximación del PMV.
+  - Todos los turnos del catálogo son de 8 h (= tope diario diurno, art.
+    61), así que el tope diario se cumple por construcción. Turnos
+    nocturnos/mixtos (7 / 7.5 h) quedan como TODO de Fase 2.
   - La clasificación ordinaria/extra-doble/extra-triple se hace a nivel
     SEMANAL por empleado (no día por día), acotada por
     extra_tope_doble_semanal_horas + extra_tope_triple_semanal_horas.
   - El descanso intrajornada de 30 min (art. 63) se modela como UN slot
-    de 1 hora completo sin cobertura por día trabajado (aproximación:
+    de 1 hora completo, FIJO a la mitad de cada turno y escalonado entre
+    turnos (nunca coinciden), sin cobertura por día trabajado (aproximación:
     los slots son de 1h, no hay resolución de media hora), pagado
     (cuenta como horas trabajadas, solo resta de la cobertura).
   - El máximo de 6 días trabajados antes de un descanso (art. 69) se
@@ -41,6 +39,10 @@ from ortools.sat.python import cp_model
 from jornada40 import reglas
 
 __all__ = [
+    "DURACION_TURNO_H",
+    "NOMBRES_TURNO",
+    "catalogo_turnos",
+    "turnos_a_horario",
     "construir_modelo",
     "resolver_tienda",
     "resolver_techo_teorico",
@@ -48,13 +50,64 @@ __all__ = [
 ]
 
 _SCALE_CENTAVOS = 100
-_PESO_DEFICIT_OFFPICO = 5000   # centavos "virtuales" por hora de déficit fuera de pico
+_PESO_DEFICIT_OFFPICO = 20000  # centavos "virtuales" (200 MXN) por hora de déficit fuera de pico:
+                               # más caro que pagar a alguien, para que la tienda nunca abra vacía
 _PESO_SOBRESTAFFING = 500      # centavos "virtuales" por hora de exceso sobre el margen
 _MARGEN_SOBRESTAFFING = 1      # personas de más toleradas sin penalizar
+_PESO_DEFICIT_PICO_RESPALDO = 200000  # solo cuando la cobertura pico dura es infactible
 
 
 def _slots_dia(hora_apertura: int, hora_cierre: int) -> list[int]:
     return list(range(hora_apertura, hora_cierre))
+
+
+# ---------------------------------------------------------------------------
+# Catálogo fijo de turnos
+# ---------------------------------------------------------------------------
+# DECISIÓN DE PRODUCTO (24-sep-2026): el modelo YA NO decide hora por hora
+# quién trabaja (eso producía decenas de "micro-turnos" y turnos partidos
+# ilegibles para un gerente). Ahora cada tienda tiene un catálogo FIJO de
+# 4 turnos de 8 h (horario y hora de descanso fijos, nadie los mueve) y lo
+# único que decide el CP-SAT, día por día, es QUÉ PERSONA entra en QUÉ
+# turno (o si descansa). Así un día se lee como "Apertura: 18 personas,
+# Intermedio: 12, ..." -- exactamente como lo arma un gerente a mano.
+#
+# Los descansos (1 slot de 1 h, pagado, art. 63) están ESCALONADOS: cada
+# turno descansa a la mitad de su jornada y como los 4 turnos arrancan a
+# horas distintas, sus descansos nunca coinciden. (Bug real del primer
+# intento: dos plantillas descansaban a la misma hora y esa hora quedaba
+# sin nadie que la pudiera cubrir -> INFEASIBLE sin importar la plantilla.)
+
+DURACION_TURNO_H = 8
+NOMBRES_TURNO = ("Apertura", "Intermedio", "Refuerzo pico", "Cierre")
+
+
+def catalogo_turnos(hora_apertura: int, hora_cierre: int) -> list[dict]:
+    """Catálogo fijo de turnos de una tienda según su horario de atención.
+
+    4 turnos de 8 h con arranques repartidos de forma pareja entre la
+    apertura y (cierre - 8 h): el primero abre la tienda y el último la
+    cierra. Descanso a la mitad de cada turno (inicio + 4 h). Si la tienda
+    abre 8 h o menos, un solo turno cubre todo el día.
+
+    Cada turno: {"turno", "inicio", "fin", "pausa"} (horas enteras, fin exclusivo).
+    """
+    hora_apertura, hora_cierre = int(hora_apertura), int(hora_cierre)
+    dur = min(DURACION_TURNO_H, hora_cierre - hora_apertura)
+    if dur <= 0:
+        return []
+    holgura = hora_cierre - hora_apertura - dur
+    if holgura <= 0:
+        inicios = [hora_apertura]
+    else:
+        inicios = sorted({hora_apertura + round(k * holgura / 3) for k in range(4)})
+    nombres = list(NOMBRES_TURNO) if len(inicios) == 4 else [
+        NOMBRES_TURNO[0], *NOMBRES_TURNO[1:len(inicios) - 1], NOMBRES_TURNO[-1]
+    ][:len(inicios)]
+    return [
+        {"turno": n, "inicio": i, "fin": i + dur, "pausa": i + dur // 2}
+        for n, i in zip(nombres, inicios)
+    ]
 
 
 def construir_modelo(
@@ -65,24 +118,22 @@ def construir_modelo(
     ausentismo_df: pd.DataFrame,
     modo: str = "operativo",
     fecha_inicio: date | None = None,
+    pico_duro: bool = True,
 ) -> tuple[cp_model.CpModel, dict]:
-    """Construye el modelo CP-SAT del horario semanal de una tienda.
+    """Construye el modelo CP-SAT: asignación persona -> turno fijo, por día.
 
-    ``modo="operativo"``: sobrestaffing y déficit fuera de pico penalizados
-    (restricciones suaves reales). ``modo="techo"``: esos dos pesos se
-    ponen a 0 (relajación teórica: el costo reportado queda libre de
-    penalización por acomodo poco realista), manteniendo intactas TODAS
-    las restricciones legales duras y la cobertura dura en pico — por
-    construcción, el óptimo de "techo" nunca puede costar más que el de
-    "operativo" (ver docstring de resolver_techo_teorico).
+    ``modo="operativo"``: sobrestaffing y déficit fuera de pico penalizados.
+    ``modo="techo"``: esos dos pesos a 0 (relajación teórica), mismas
+    restricciones legales duras -- su óptimo nunca cuesta más que el
+    operativo. ``pico_duro=False`` convierte la cobertura en pico en una
+    penalización muy alta (se usa solo como respaldo si la versión dura
+    es infactible, para no dejar al gerente sin horario).
     """
     fref = date(anio, 1, 1)
     dom_ref = fecha_inicio or reglas.semana_domingo_a_sabado(fref)[0]
     dias = [dom_ref + timedelta(days=i) for i in range(7)]
 
     tope_semanal = reglas.regla_vigente("jornada_ordinaria_semanal_horas", fref)
-    tope_diario_ordinario = reglas.regla_vigente(reglas.MAPA_JORNADA_DIARIA["diurna"], fref)
-    tope_diario_total = reglas.regla_vigente("jornada_diaria_total_max_horas", fref)
     tope_extra_doble = reglas.regla_vigente("extra_tope_doble_semanal_horas", fref)
     tope_extra_triple = reglas.regla_vigente("extra_tope_triple_semanal_horas", fref)
     dias_trabajo_max = reglas.regla_vigente("dias_trabajo_maximo_antes_descanso", fref)
@@ -103,79 +154,75 @@ def construir_modelo(
 
     horas_del_dia = sorted(demanda_tienda_df["hora"].unique().tolist())
     roles = sorted(plantilla_tienda_df["rol"].unique().tolist())
+    # Ventana del catálogo = horas en que la tienda necesita a alguien
+    # (incluye la ventana extendida de almacén antes de abrir/después de
+    # cerrar). Fuera de ella la demanda es 0 y no tiene sentido poner turnos.
+    _con_demanda = demanda_tienda_df.loc[demanda_tienda_df["personas_requeridas"] > 0, "hora"]
+    if len(_con_demanda):
+        turnos = catalogo_turnos(int(_con_demanda.min()), int(_con_demanda.max()) + 1)
+    else:
+        turnos = catalogo_turnos(min(horas_del_dia), max(horas_del_dia) + 1) if horas_del_dia else []
+    t_idx = range(len(turnos))
 
     model = cp_model.CpModel()
-    work: dict = {}
-    pausa: dict = {}
-    for emp in empleados.itertuples(index=False):
-        for d in dias:
-            if (emp.empleado_id, d) in ausentes:
-                for h in horas_del_dia:
-                    work[(emp.empleado_id, d, h)] = model.NewConstant(0)
-                    pausa[(emp.empleado_id, d, h)] = model.NewConstant(0)
-                continue
-            for h in horas_del_dia:
-                work[(emp.empleado_id, d, h)] = model.NewBoolVar(f"w_{emp.empleado_id}_{d}_{h}")
-                pausa[(emp.empleado_id, d, h)] = model.NewBoolVar(f"p_{emp.empleado_id}_{d}_{h}")
-                model.Add(pausa[(emp.empleado_id, d, h)] <= work[(emp.empleado_id, d, h)])
-
-    trabaja_dia: dict = {}
-    horas_dia: dict = {}
-    horas_ordinarias: dict = {}
-    horas_extra_doble: dict = {}
-    horas_extra_triple: dict = {}
-
+    x: dict = {}  # (e, d, t) -> Bool: la persona e trabaja el turno t el día d
     for emp in empleados.itertuples(index=False):
         e = emp.empleado_id
         for d in dias:
-            horas_dia[(e, d)] = model.NewIntVar(0, len(horas_del_dia), f"hd_{e}_{d}")
-            model.Add(horas_dia[(e, d)] == sum(work[(e, d, h)] for h in horas_del_dia))
-            trabaja_dia[(e, d)] = model.NewBoolVar(f"td_{e}_{d}")
-            model.Add(horas_dia[(e, d)] >= 1).OnlyEnforceIf(trabaja_dia[(e, d)])
-            model.Add(horas_dia[(e, d)] == 0).OnlyEnforceIf(trabaja_dia[(e, d)].Not())
-            model.Add(horas_dia[(e, d)] <= int(tope_diario_total))
-            # descanso intrajornada: exactamente 1 slot de pausa si trabaja ese día.
-            model.Add(sum(pausa[(e, d, h)] for h in horas_del_dia) == trabaja_dia[(e, d)])
+            if (e, d) in ausentes:
+                continue
+            vars_dia = []
+            for t in t_idx:
+                x[(e, d, t)] = model.NewBoolVar(f"x_{e}_{d}_{t}")
+                vars_dia.append(x[(e, d, t)])
+            model.AddAtMostOne(vars_dia)
 
-        model.Add(sum(trabaja_dia[(e, d)] for d in dias) <= int(dias_trabajo_max))
-
+    horas_ordinarias: dict = {}
+    horas_extra_doble: dict = {}
+    horas_extra_triple: dict = {}
+    for emp in empleados.itertuples(index=False):
+        e = emp.empleado_id
+        dias_trab = [x[(e, d, t)] for d in dias for t in t_idx if (e, d, t) in x]
+        model.Add(sum(dias_trab) <= int(dias_trabajo_max))
         horas_semana = model.NewIntVar(0, jornada_semanal_cap, f"hs_{e}")
-        model.Add(horas_semana == sum(horas_dia[(e, d)] for d in dias))
-
+        model.Add(horas_semana == sum(
+            (turnos[t]["fin"] - turnos[t]["inicio"]) * x[(e, d, t)]
+            for d in dias for t in t_idx if (e, d, t) in x
+        ))
         horas_ordinarias[e] = model.NewIntVar(0, int(tope_semanal), f"ho_{e}")
         horas_extra_doble[e] = model.NewIntVar(0, int(tope_extra_doble), f"hed_{e}")
         horas_extra_triple[e] = model.NewIntVar(0, int(tope_extra_triple), f"het_{e}")
         model.Add(horas_semana == horas_ordinarias[e] + horas_extra_doble[e] + horas_extra_triple[e])
-        # Prioriza llenar ordinaria antes de extra-doble, y extra-doble antes
-        # de extra-triple (evita que el solver "invente" extra innecesaria):
-        model.Add(horas_ordinarias[e] == int(tope_semanal)).OnlyEnforceIf(
-            _hs_mayor_igual(model, horas_semana, int(tope_semanal)))
+
+    # Qué turnos cubren (trabajando, no en pausa) cada hora.
+    turnos_que_cubren = {
+        h: [t for t in t_idx if turnos[t]["inicio"] <= h < turnos[t]["fin"] and turnos[t]["pausa"] != h]
+        for h in horas_del_dia
+    }
+    empleados_por_rol = {rol: list(empleados.loc[empleados["rol"] == rol, "empleado_id"]) for rol in roles}
 
     cobertura: dict = {}
     deficit_vars: list = []
+    deficit_pico_vars: list = []
     exceso_vars: list = []
     for d in dias:
         for h in horas_del_dia:
             for rol in roles:
-                empleados_rol = [e for e in empleados.loc[empleados["rol"] == rol, "empleado_id"]]
-                cobertura_expr = sum(
-                    work[(e, d, h)] - pausa[(e, d, h)] for e in empleados_rol
-                ) if empleados_rol else 0
+                terms = [x[(e, d, t)] for e in empleados_por_rol[rol]
+                         for t in turnos_que_cubren[h] if (e, d, t) in x]
+                n_max = max(1, len(empleados_por_rol[rol]))
+                cob_var = model.NewIntVar(0, n_max, f"cob_{d}_{h}_{rol}")
+                model.Add(cob_var == (sum(terms) if terms else 0))
+                cobertura[(d, h, rol)] = cob_var
                 requerido = int(demanda.get((d, h, rol), 0))
                 es_pico = bool(es_pico_map.get((d, h), False))
-
-                cob_var = model.NewIntVar(0, max(1, len(empleados_rol)), f"cob_{d}_{h}_{rol}")
-                model.Add(cob_var == cobertura_expr)
-                cobertura[(d, h, rol)] = cob_var
-
-                if es_pico:
+                if es_pico and pico_duro:
                     model.Add(cob_var >= requerido)
                 else:
-                    deficit = model.NewIntVar(0, requerido, f"def_{d}_{h}_{rol}")
+                    deficit = model.NewIntVar(0, max(requerido, 0), f"def_{d}_{h}_{rol}")
                     model.Add(deficit >= requerido - cob_var)
-                    deficit_vars.append(deficit)
-
-                exceso = model.NewIntVar(0, max(1, len(empleados_rol)), f"exc_{d}_{h}_{rol}")
+                    (deficit_pico_vars if es_pico else deficit_vars).append(deficit)
+                exceso = model.NewIntVar(0, n_max, f"exc_{d}_{h}_{rol}")
                 model.Add(exceso >= cob_var - requerido - _MARGEN_SOBRESTAFFING)
                 exceso_vars.append(exceso)
 
@@ -192,11 +239,13 @@ def construir_modelo(
 
     peso_deficit = 0 if modo == "techo" else _PESO_DEFICIT_OFFPICO
     peso_exceso = 0 if modo == "techo" else _PESO_SOBRESTAFFING
-    objetivo = costo_payroll + peso_deficit * sum(deficit_vars) + peso_exceso * sum(exceso_vars)
+    objetivo = (costo_payroll + peso_deficit * sum(deficit_vars)
+                + _PESO_DEFICIT_PICO_RESPALDO * sum(deficit_pico_vars)
+                + peso_exceso * sum(exceso_vars))
     model.Minimize(objetivo)
 
     variables = {
-        "work": work, "pausa": pausa, "dias": dias, "horas_del_dia": horas_del_dia,
+        "x": x, "turnos": turnos, "dias": dias, "horas_del_dia": horas_del_dia,
         "roles": roles, "horas_ordinarias": horas_ordinarias,
         "horas_extra_doble": horas_extra_doble, "horas_extra_triple": horas_extra_triple,
         "cobertura": cobertura, "deficit_vars": deficit_vars, "exceso_vars": exceso_vars,
@@ -207,23 +256,29 @@ def construir_modelo(
     return model, variables
 
 
-def _hs_mayor_igual(model: cp_model.CpModel, var: cp_model.IntVar, umbral: int) -> cp_model.IntVar:
-    """Bool auxiliar: True si ``var >= umbral`` (para forzar ordinaria=tope)."""
-    b = model.NewBoolVar(f"ge_{var.Name()}_{umbral}")
-    model.Add(var >= umbral).OnlyEnforceIf(b)
-    model.Add(var < umbral).OnlyEnforceIf(b.Not())
-    return b
-
-
-def _extraer_horario(solver: cp_model.CpSolver, variables: dict) -> pd.DataFrame:
+def _extraer_turnos(solver: cp_model.CpSolver, variables: dict) -> pd.DataFrame:
+    """Una fila por persona y día trabajado: qué turno fijo le tocó."""
+    turnos = variables["turnos"]
     filas = []
-    for (e, d, h), var in variables["work"].items():
-        trabaja = bool(solver.Value(var))
-        if trabaja:
-            en_pausa = bool(solver.Value(variables["pausa"][(e, d, h)]))
-            filas.append({"empleado_id": e, "fecha": d, "hora": h,
-                          "trabajando": True, "en_pausa": en_pausa})
-    return pd.DataFrame(filas)
+    for (e, d, t), var in variables["x"].items():
+        if solver.Value(var):
+            tt = turnos[t]
+            filas.append({"empleado_id": e, "fecha": d, "turno": tt["turno"],
+                          "hora_inicio": tt["inicio"], "hora_fin": tt["fin"], "hora_pausa": tt["pausa"]})
+    cols = ["empleado_id", "fecha", "turno", "hora_inicio", "hora_fin", "hora_pausa"]
+    return pd.DataFrame(filas, columns=cols)
+
+
+def turnos_a_horario(turnos_df: pd.DataFrame) -> pd.DataFrame:
+    """Expande turnos (1 fila por persona-día) al formato hora por hora que
+    usa el resto del pipeline (costos, calificación de ediciones, CSV):
+    empleado_id, fecha, hora, trabajando, en_pausa, turno."""
+    filas = []
+    for r in turnos_df.itertuples(index=False):
+        for h in range(int(r.hora_inicio), int(r.hora_fin)):
+            filas.append({"empleado_id": r.empleado_id, "fecha": r.fecha, "hora": h,
+                          "trabajando": True, "en_pausa": h == int(r.hora_pausa), "turno": r.turno})
+    return pd.DataFrame(filas, columns=["empleado_id", "fecha", "hora", "trabajando", "en_pausa", "turno"])
 
 
 def resolver_tienda(
@@ -236,38 +291,46 @@ def resolver_tienda(
     tiempo_limite_seg: float = 60.0,
     fecha_inicio: date | None = None,
 ) -> dict:
-    """Resuelve el horario óptimo (o factible) de UNA tienda.
+    """Resuelve la asignación óptima (o factible) persona -> turno de UNA tienda.
 
-    El límite de tiempo (``tiempo_limite_seg``) es un trade-off explícito
-    entre calidad de solución y viabilidad de correr 50 tiendas en
-    paralelo: con más tiempo, ``brecha_optimalidad`` baja. Si preguntan en
-    la demo "¿es óptimo de verdad?", la respuesta honesta es: es la mejor
-    solución encontrada dentro del tiempo límite, con una brecha reportada
-    explícitamente (0 % si terminó como OPTIMAL antes del límite).
+    Primero intenta con la cobertura en hora pico como restricción DURA. Si
+    eso es infactible (p. ej. mucho ausentismo esa semana), reintenta con
+    la cobertura pico como penalización muy alta: así el gerente siempre
+    recibe un horario, y ``horas_subdotacion_pico`` le dice cuántas horas
+    pico quedaron cortas (``pico_relajado=True``).
+
+    El límite de tiempo es un trade-off explícito calidad/velocidad; la
+    brecha de optimalidad se reporta (0 % si terminó como OPTIMAL).
     """
-    model, variables = construir_modelo(
-        tienda_id, anio, plantilla_tienda_df, demanda_tienda_df, ausentismo_df,
-        modo=modo, fecha_inicio=fecha_inicio,
-    )
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = tiempo_limite_seg
-    solver.parameters.num_search_workers = 4
-    status = solver.Solve(model)
+    pico_relajado = False
+    for pico_duro in (True, False):
+        model, variables = construir_modelo(
+            tienda_id, anio, plantilla_tienda_df, demanda_tienda_df, ausentismo_df,
+            modo=modo, fecha_inicio=fecha_inicio, pico_duro=pico_duro,
+        )
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = tiempo_limite_seg
+        solver.parameters.num_search_workers = 4
+        status = solver.Solve(model)
+        status_nombre = solver.StatusName(status)
+        if status_nombre in ("OPTIMAL", "FEASIBLE"):
+            pico_relajado = not pico_duro
+            break
 
-    status_nombre = solver.StatusName(status)
     if status_nombre not in ("OPTIMAL", "FEASIBLE"):
         return {
             "tienda_id": tienda_id, "status": "INFEASIBLE",
-            "mensaje": ("No se encontró horario factible: probablemente la demanda "
-                        "pico excede la capacidad de la plantilla dada las restricciones "
-                        "legales de jornada y descansos."),
-            "horario_df": pd.DataFrame(), "costo_total_mxn": None,
+            "mensaje": ("No se encontró horario factible con las reglas legales de jornada y "
+                        "descansos, ni siquiera relajando la cobertura en pico."),
+            "horario_df": pd.DataFrame(), "turnos_df": pd.DataFrame(),
+            "catalogo_turnos": variables["turnos"], "costo_total_mxn": None,
             "brecha_optimalidad_pct": None, "horas_ordinarias": None,
             "horas_extra_doble": None, "horas_extra_triple": None,
-            "horas_subdotacion_pico": None, "horas_sobrestaffing": None,
+            "horas_subdotacion_pico": None, "horas_sobrestaffing": None, "pico_relajado": None,
         }
 
-    horario_df = _extraer_horario(solver, variables)
+    turnos_df = _extraer_turnos(solver, variables)
+    horario_df = turnos_a_horario(turnos_df)
     horas_ord = sum(solver.Value(v) for v in variables["horas_ordinarias"].values())
     horas_ed = sum(solver.Value(v) for v in variables["horas_extra_doble"].values())
     horas_et = sum(solver.Value(v) for v in variables["horas_extra_triple"].values())
@@ -286,13 +349,15 @@ def resolver_tienda(
 
     return {
         "tienda_id": tienda_id, "status": status_nombre,
-        "horario_df": horario_df,
+        "horario_df": horario_df, "turnos_df": turnos_df,
+        "catalogo_turnos": variables["turnos"],
         "costo_total_mxn": round(costo_payroll_cent / _SCALE_CENTAVOS, 2),
         "brecha_optimalidad_pct": round(brecha, 3),
         "horas_ordinarias": horas_ord, "horas_extra_doble": horas_ed,
         "horas_extra_triple": horas_et,
         "horas_subdotacion_pico": horas_subdotacion_pico,
         "horas_sobrestaffing": horas_sobrestaffing,
+        "pico_relajado": pico_relajado,
     }
 
 

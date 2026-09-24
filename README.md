@@ -26,7 +26,7 @@ Cada tienda tiene un único usuario de gerente (no hay cuentas de respaldo).
 Las 5 zonas de Admin agrupan los 10 clústeres geográficos del catálogo de
 tiendas (ver `jornada40/usuarios.py::ZONAS` — es un supuesto de producto,
 ajustable). Los admins regionales y sus tiendas se activan/desactivan desde
-"Gestión de usuarios" (rol Admin o SAdmin; un admin regional solo ve/gestiona
+"Usuarios" (rol Admin o SAdmin; un admin regional solo ve/gestiona
 su propia zona).
 
 La contraseña son los primeros dígitos de π, elegidos justo por ser un
@@ -41,9 +41,8 @@ docker build -t jornada40 .
 docker run -p 8501:8501 jornada40
 ```
 
-Abre `http://localhost:8501`. La primera vez genera el dataset sintético
-automáticamente (unos segundos) y calcula bajo demanda cuando entras a
-cada pantalla — no hay pasos manuales adicionales.
+Abre `http://localhost:8501`. Los datos sintéticos se generan solos
+(por semana, al abrirla) — no hay pasos manuales adicionales.
 
 > Nota: este Dockerfile se construyó siguiendo la práctica estándar y se
 > verificó ejecutando la app directamente con Python en este entorno
@@ -64,46 +63,48 @@ streamlit run app.py
 
 ```
 jornada40/
-  reglas.py            Motor de reglas legales por vigencia (autoajustable por año)
-  datos_sinteticos.py  Generador del dataset sintético (50 tiendas, año completo)
-  demanda_personal.py  Tráfico/ventas -> personas requeridas (Erlang C + carga/productividad)
-  escenario_base.py    Horario base: rotativo fijo + horas extra realista
-  optimizador.py       Optimizador CP-SAT (OR-Tools): horario propuesto + techo teórico
-  costos_ahorro.py     Ahorro semanal/diario, brecha vs. techo, trazabilidad, calificación de ediciones manuales
-  calendario.py         Navegación mes -> semana -> día (funciones puras, sin Streamlit)
-  simulacros.py        Palancas de escenario + préstamo de personal entre tiendas
-  vista_red.py         Consolidado de las 50 tiendas, filtros, acciones masivas
-  usuarios.py            Roster y login (SADMIN / ADMIN-Z1..Z5 / Man001..Man050)
-  tests/                83 pruebas unitarias (pytest)
-app.py                 Interfaz Streamlit (pantalla del gerente: calendario mes/semana/día)
-Dockerfile, requirements.txt
+  reglas.py            Motor de reglas legales por vigencia (48 h en 2026 -> 40 h en 2030)
+  datos_sinteticos.py  Dataset sintético: 50 tiendas, plantilla fija y datos por semana bajo demanda
+  demanda_personal.py  Tráfico/ventas -> personas requeridas (Erlang C + carga/productividad + calibración)
+  escenario_base.py    Horario base: rol fijo rotativo + horas extra (cómo se programa hoy)
+  optimizador.py       CP-SAT (OR-Tools): cada persona, cada día -> 1 de 4 turnos fijos o descanso
+  costos_ahorro.py     Ahorro semanal, brecha vs. techo, trazabilidad legal, calificación de cambios manuales
+  calendario.py        Funciones puras de fechas (mes/semana)
+  vista_red.py         Consolidado de tiendas (Resumen)
+  usuarios.py          Cuentas (SADMIN / ADMIN-Z1..Z5 / Man001..Man050)
+  auditoria.py         Historial de acciones
+  notificaciones.py    Avisos en la app + correo SMTP
+  simulacros.py        (sin interfaz desde 24-sep-2026; se conserva con sus pruebas)
+  tests/               pruebas unitarias (pytest)
+app.py                 Interfaz Streamlit
 docs/
-  guion_demo.md         Guion de 45 min para la demo con el CEO/CFO
-  registro_agentic.md    Registro de uso de herramientas agénticas por módulo
+  manual.md            Manual de uso de TODA la app + checklist de verificación
+  guion_demo.md        Guion de 45 min para la demo
+  registro_agentic.md  Registro de uso de herramientas agénticas
 ```
 
-## Calendario del gerente (mes -> semana -> día)
+## Cómo funciona (resumen)
 
-La pantalla de arranque del gerente es un calendario (cuadrícula de días,
-como el catálogo de tiendas: 1 clic = 1 semana). Regla de producto,
-documentada en `jornada40/calendario.py`:
+- **Menú por rol.** Gerente: Horario, Mi tienda, Avisos. Admin de zona:
+  Resumen, Horario, Tienda, Avisos, Historial, Usuarios. Super Admin:
+  lo mismo + Reglas legales, Datos y "Ver como".
+- **El horario empieza hoy y llega a diciembre de 2030.** El régimen
+  legal sale solo de la fecha de cada semana (48 h en 2026, 46 en 2027,
+  44 en 2028, 42 en 2029, 40 en 2030). Si una semana cruza de año, aplica
+  el tope del año nuevo (el más estricto).
+- **Turnos fijos.** Cada tienda tiene 4 turnos de 8 h (Apertura,
+  Intermedio, Refuerzo pico, Cierre) con descanso a media jornada,
+  escalonados para que nunca coincidan. El optimizador solo decide quién
+  entra a cuál turno cada día (o descansa).
+- **Se calcula al abrir.** Abrir una semana (en Horario o Mi tienda) la
+  calcula; no hay botón escondido. Los datos de cada semana se generan
+  bajo demanda y son reproducibles.
+- **Cambios manuales.** En la vista Día: persona -> nuevo turno ->
+  Cambiar. Se bloquea si rompe la ley (7 días seguidos o más horas que el
+  máximo legal) y si no, se califica contra el óptimo (costo y cobertura
+  en pico). Se puede deshacer.
 
-- El dataset de ejemplo cubre el **año completo** (`datos_sinteticos.py`,
-  antes solo generaba 7 días), así que cualquier mes/semana del año se
-  puede navegar.
-- **El mes es navegación visual gratis** (solo fechas, sin calcular nada).
-  El cálculo real (horario base, propuesta del optimizador, techo teórico y
-  ahorro en MXN) se dispara **solo cuando el gerente abre una semana**
-  específica (botón "Calcular esta semana") — calcular las 52 semanas de
-  una tienda al arrancar sería lentísimo e innecesario.
-- Dentro de una semana ya calculada, cada día se puede abrir para ver sus
-  turnos ("chips": un bloque por empleado) y editarlos a mano —
-  **solo reasignar un turno a otro empleado de la plantilla** (no se
-  puede inventar horas nuevas). Como el CP-SAT ya encontró el óptimo legal
-  para esa semana, cualquier edición manual solo puede alejarse de él; por
-  eso se califica con `costos_ahorro.calificar_edicion_manual` (delta de
-  costo en MXN, si deja hueco nuevo en hora pico, y si empuja a alguien a
-  horas extra triples) en vez de resolverse como un problema nuevo.
+Detalle completo en [`docs/manual.md`](docs/manual.md).
 
 ## Supuestos clave (y de dónde salen)
 
@@ -123,14 +124,15 @@ documentada en `jornada40/calendario.py`:
   (`costos_ahorro.py`, multiplicador 3x documentado como convención de
   negocio del PMV, no cifra legal).
 
-**Nota de calibración pendiente**: en corridas de prueba con pocas tiendas,
-el ahorro salió por encima de 60%, más alto de lo esperado para una demo
-creíble (ver conversación de diseño: "un ahorro muy alto se ve
-sospechoso"). Antes de la demo real, correr las 50 tiendas completas y
-revisar si el escenario base (`escenario_base.py`) está sub-dotado de
-forma realista, o si los parámetros de `demanda_personal.py` necesitan
-ajuste — el ahorro debe presentarse siempre junto al % del techo
-capturado, nunca como cifra suelta.
+**Calibración (resuelta 24-sep-2026)**: la demanda que sale del tráfico
+sintético solo captura trabajo ligado a tickets y era 30–55% de la
+capacidad de 80 FTE, por eso el ahorro salía en 50–70% (irreal). Ahora
+`demanda_personal.CONFIG["factor_calibracion"]` escala la demanda por
+rol y formato bajo un supuesto explícito: **la plantilla actual opera al
+60% de su capacidad a 48 h en una semana promedio** (se probó 85% y la
+tienda se quedaba sin gente en la apertura). Resultado típico: 11–21% de
+ahorro en 2026 y ~6–8% en 2030, cuando la jornada de 40 h ya obliga a
+pagar horas extra con la misma plantilla.
 
 ## Pendiente de validación legal
 
@@ -157,28 +159,22 @@ texto del decreto y la LFT vigente.
   semilla fija).
 - Día de jornada electoral del art. 74 fr. IX (depende de un calendario
   electoral externo).
-- Distinción de jornada diurna/nocturna/mixta por turno en el optimizador
-  (usa un tope diario genérico; ver docstring de `optimizador.py`).
-- Edición manual de turnos más allá de reasignar (arrastrar horas, crear
-  turnos nuevos, editar por lotes) — el PMV solo permite reasignar un turno
-  ya generado a otro empleado de la plantilla, calificado contra el óptimo
-  (ver "Calendario del gerente" arriba). Drag-and-drop real y edición
-  masiva quedan para una siguiente iteración.
-
-**Nota**: el optimizador y el cálculo de horario siguen operando **una
-semana a la vez** (como exige la LFT, domingo a sábado) — lo que cambió es
-que el dataset y la navegación del calendario ahora cubren el año
-completo, así que el gerente puede calcular *cualquier* semana del año,
-no solo la primera.
+- Turnos nocturnos/mixtos (7 / 7.5 h): el catálogo usa turnos de 8 h
+  (tope diurno).
+- Editar el catálogo de turnos por tienda desde la interfaz (hoy se
+  deriva del horario de la tienda).
+- Simulacros de escenario y préstamo de personal entre tiendas: el código
+  existe (`simulacros.py`), pero se quitó de la interfaz para mantenerla
+  enfocada.
 
 ## Nota de rendimiento
 
-Cada tienda resuelve un problema CP-SAT de ~80 empleados × 7 días × 17
-horas. Con el límite de tiempo por defecto (10s por tienda), calcular la
-red completa (50 tiendas × 2 corridas: propuesta y techo) toma varios
-minutos incluso en paralelo. La Vista Red de la app deja elegir cuántas
-tiendas calcular para pruebas rápidas; usa las 50 para la corrida real
-antes de la demo.
+Cada tienda-semana es un modelo CP-SAT de ~80 personas × 7 días × 4
+turnos (unos 2,200 booleanos): tarda de 1 a 25 s según la tienda. En
+Resumen, calcular las 50 tiendas de una semana toma varios minutos; el
+resultado queda en caché, así que abrir después cualquiera de esas
+tiendas es instantáneo. Recomendación: calcular la semana de la demo
+antes de la llamada.
 
 ## Cómo correr las pruebas
 
@@ -187,7 +183,7 @@ pip install -r requirements.txt
 pytest jornada40/tests/ -v
 ```
 
-62 pruebas, todas pasando sobre el conjunto completo de módulos.
+95 pruebas, todas pasando.
 
 ## Verificación rápida
 

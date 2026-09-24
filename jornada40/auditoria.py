@@ -37,9 +37,9 @@ TIPOS_EVENTO: dict[str, str] = {
     "correo_actualizado": "Correo de notificaciones actualizado",
     "datos_cargados": "Datos propios cargados",
     "datos_restablecidos": "Vuelta a datos de ejemplo",
-    "red_calculada": "Cálculo de Vista Red",
-    "turno_reasignado": "Turno reasignado (Calendario)",
-    "turno_calificado": "Cambio de turno calificado",
+    "red_calculada": "Cálculo del Resumen",
+    "turno_reasignado": "Cambio de turno",
+    "turno_calificado": "Calificación de cambio",
     "pagina_visitada": "Navegación entre páginas",
 }
 

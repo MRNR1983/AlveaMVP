@@ -516,5 +516,38 @@ def generar_dataset_completo(
     return tablas
 
 
+def generar_semana(
+    tiendas_df: pd.DataFrame,
+    plantilla_df: pd.DataFrame,
+    domingo: date,
+    seed: int = 42,
+) -> dict[str, pd.DataFrame]:
+    """Tráfico, ventas y ausentismo de UNA semana (domingo a sábado), bajo demanda.
+
+    DECISIÓN DE PRODUCTO (24-sep-2026): el calendario arranca HOY y llega
+    hasta 2030 (régimen 48 h -> 40 h). Generar y guardar ~4 años x 50
+    tiendas x 24 h (~150 MB) al arrancar la app sería lento y no cabe
+    cómodo en Streamlit Cloud, así que cada semana se genera cuando alguien
+    la abre. Es reproducible: la misma semana siempre da los mismos datos
+    (semilla = seed + número de día de ese domingo).
+
+    Se genera con 35 días de margen hacia atrás para que el calendario de
+    quincenas (que depende de fechas de pago previas) salga igual que si se
+    generara el año completo, y luego se recorta a los 7 días.
+    """
+    domingo = pd.Timestamp(domingo).date()
+    sabado = domingo + timedelta(days=6)
+    semilla = int(seed) + domingo.toordinal()
+    trafico = generar_trafico(tiendas_df, domingo - timedelta(days=35), sabado, seed=seed)
+    # ruido distinto por semana, factores por tienda iguales (misma seed arriba)
+    trafico = trafico[pd.to_datetime(trafico["fecha"]).dt.date >= domingo].reset_index(drop=True)
+    rng = _rng(semilla)
+    ruido = np.maximum(0.0, 1.0 + rng.normal(0.0, CONFIG["trafico"]["ruido_std"] / 2, size=len(trafico)))
+    trafico["clientes_estimados"] = np.floor(trafico["clientes_estimados"] * ruido).astype(int)
+    ventas = generar_ventas(trafico, seed=seed)
+    ausentismo = generar_ausentismo(plantilla_df, domingo, sabado, seed=semilla)
+    return {"trafico": trafico, "ventas": ventas, "ausentismo": ausentismo}
+
+
 if __name__ == "__main__":
     generar_dataset_completo(date(2027, 1, 3), date(2027, 1, 9))

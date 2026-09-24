@@ -60,6 +60,29 @@ CONFIG: dict = {
         },
         "minimo_si_area_abierta": 1,
     },
+    # CALIBRACIÓN (24-sep-2026). Sin esto, la demanda que sale del tráfico
+    # sintético era ~30-55 % de la capacidad de 80 FTE x 48 h, y el
+    # "ahorro" salía en 50-70 % -- un número que ningún CFO cree, porque
+    # implica que sobra más de la mitad de la gente. El tráfico solo
+    # captura trabajo ligado a tickets; una tienda real además recibe
+    # mercancía, limpia, hace inventario, cuida cadena de frío, etc.
+    #
+    # SUPUESTO EXPLÍCITO DEL PMV: la plantilla actual (80 FTE, reparto fijo
+    # por rol) está dimensionada para operar al 60 % de su capacidad a 48 h
+    # en una semana PROMEDIO de su formato. (Se probó 85 %: con turnos
+    # fijos de 8 h y fines de semana +50 % la tienda se quedaba sin gente
+    # en la apertura; 60 % deja la tienda cubierta todos los días y aun así
+    # en 2030, a 40 h, la plantilla ya no alcanza sin horas extra.) Estos factores (calculados
+    # sobre 13 semanas repartidas en 2026, 50 tiendas) escalan la demanda
+    # por rol y formato para cumplir ese supuesto. Semanas pico (quincena,
+    # Buen Fin, Navidad) quedan por arriba -- ahí aparece horas extra.
+    # Recalibrar con datos reales en Fase 1.
+    "utilizacion_objetivo": 0.60,
+    "factor_calibracion": {
+        "chico": {"cajas": 1.42, "piso_reposicion": 2.8, "perecederos": 1.72, "almacen": 1.59},
+        "mediano": {"cajas": 1.07, "piso_reposicion": 1.84, "perecederos": 1.15, "almacen": 1.15},
+        "grande": {"cajas": 0.92, "piso_reposicion": 1.3, "perecederos": 0.82, "almacen": 0.88},
+    },
     "almacen_extendido": {
         "horas_extra_preapertura": 1,
         "horas_extra_postcierre": 1,
@@ -235,7 +258,15 @@ def calcular_demanda_tienda(
         filas.append({"tienda_id": tienda_id, "fecha": row.fecha, "hora": hora,
                        "rol": "almacen", "personas_requeridas": req_almacen})
 
-    return pd.DataFrame(filas)
+    demanda = pd.DataFrame(filas)
+    factores_cal = CONFIG["factor_calibracion"].get(str(tienda_row.get("formato", "")), {})
+    if factores_cal and not demanda.empty:
+        f = demanda["rol"].map(factores_cal).fillna(1.0)
+        demanda["personas_requeridas"] = [
+            int(math.ceil(v * k - 1e-9)) if v > 0 else 0
+            for v, k in zip(demanda["personas_requeridas"], f)
+        ]
+    return demanda
 
 
 def _worker_demanda_tienda(args: tuple) -> pd.DataFrame:
