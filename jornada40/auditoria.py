@@ -84,9 +84,11 @@ def cargar_auditoria(data_dir: Path) -> pd.DataFrame:
         return pd.DataFrame(columns=_COLUMNAS)
 
 
-def visible_para(df: pd.DataFrame, auth: dict) -> pd.DataFrame:
+def visible_para(df: pd.DataFrame, auth: dict, tiendas_zona: set[str] | None = None) -> pd.DataFrame:
     """Recorta el histórico al alcance del rol: manager ve su tienda (+ lo
-    que él mismo hizo), admin ve su zona (+ lo suyo), super_admin ve todo."""
+    que él mismo hizo), admin ve su zona -- incluidas las acciones de los
+    gerentes de las tiendas de esa zona si se pasa ``tiendas_zona`` -- (+ lo
+    suyo), super_admin ve todo."""
     if df.empty:
         return df
     if auth["rol"] == "super_admin":
@@ -94,6 +96,7 @@ def visible_para(df: pd.DataFrame, auth: dict) -> pd.DataFrame:
     if auth["rol"] == "admin":
         return df[
             ((df["alcance_tipo"] == "zona") & (df["alcance_valor"] == auth["zona_id"]))
+            | ((df["alcance_tipo"] == "tienda") & df["alcance_valor"].isin(tiendas_zona or set()))
             | (df["usuario"] == auth["usuario"])
             | (df["alcance_tipo"] == "red")
         ]

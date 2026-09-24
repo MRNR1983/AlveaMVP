@@ -19,7 +19,7 @@ ahorra **$[ahorro] MXN ([%])** en la red frente al rol fijo de hoy."
 ## 15–30 min: la experiencia del gerente (Ver como → una tienda)
 - **Horario → Semana**: 4 turnos fijos por día y cuántas personas hay.
 - **Día**: nombres por turno y la gráfica de cobertura contra demanda.
-- Cambia a alguien de turno en vivo: muestra la calificación y
+- (Solo como gerente: Ver como → tienda.) Cambia a alguien de turno en vivo: muestra la calificación y
   **Deshacer**. Intenta darle a alguien un 7.º día: la app lo bloquea
   citando el art. 69.
 - **Mi tienda**: de dónde sale el ahorro (horas extra evitadas) y las

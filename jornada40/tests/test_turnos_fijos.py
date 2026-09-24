@@ -96,3 +96,15 @@ def test_calibracion_por_formato_definida_para_los_tres_formatos():
     for f in cal.values():
         assert set(f) == {"cajas", "piso_reposicion", "perecederos", "almacen"}
         assert all(v > 0 for v in f.values())
+
+
+def test_descansos_personales_dentro_de_la_ventana_del_turno(semana_real):
+    """Cada persona descansa en una de las horas permitidas de SU turno, y en
+    un turno con varias personas los descansos se reparten (no todos a la vez)."""
+    r = semana_real["r"]
+    cat = {t["turno"]: t for t in r["catalogo_turnos"]}
+    t = r["turnos_df"]
+    assert all(row.hora_pausa in cat[row.turno]["pausas"] for row in t.itertuples())
+    grupos = t.groupby(["fecha", "turno"])
+    grandes = [g for _, g in grupos if len(g) >= 10]
+    assert grandes and any(g["hora_pausa"].nunique() > 1 for g in grandes)

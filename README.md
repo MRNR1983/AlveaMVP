@@ -93,9 +93,11 @@ docs/
   44 en 2028, 42 en 2029, 40 en 2030). Si una semana cruza de año, aplica
   el tope del año nuevo (el más estricto).
 - **Turnos fijos.** Cada tienda tiene 4 turnos de 8 h (Apertura,
-  Intermedio, Refuerzo pico, Cierre) con descanso a media jornada,
-  escalonados para que nunca coincidan. El optimizador solo decide quién
-  entra a cuál turno cada día (o descansa).
+  Intermedio, Refuerzo pico, Cierre). El optimizador decide quién entra a
+  cuál turno cada día (o descansa) y a qué hora toma cada quien su
+  descanso (4.ª–6.ª hora), para que ningún turno se vacíe en hora pico.
+- **Un rol por vista.** Horario = operación; Mi tienda / Resumen = dinero.
+  Solo el gerente cambia turnos; admin y HQ ven el horario en lectura.
 - **Se calcula al abrir.** Abrir una semana (en Horario o Mi tienda) la
   calcula; no hay botón escondido. Los datos de cada semana se generan
   bajo demanda y son reproducibles.
@@ -130,9 +132,10 @@ capacidad de 80 FTE, por eso el ahorro salía en 50–70% (irreal). Ahora
 `demanda_personal.CONFIG["factor_calibracion"]` escala la demanda por
 rol y formato bajo un supuesto explícito: **la plantilla actual opera al
 60% de su capacidad a 48 h en una semana promedio** (se probó 85% y la
-tienda se quedaba sin gente en la apertura). Resultado típico: 11–21% de
-ahorro en 2026 y ~6–8% en 2030, cuando la jornada de 40 h ya obliga a
-pagar horas extra con la misma plantilla.
+tienda se quedaba sin gente en la apertura). Con descansos escalonados
+por persona, el resultado es ~23% de ahorro en la red en 2026 y ~15–17%
+en 2030, cuando la jornada de 40 h ya obliga a pagar horas extra con la
+misma plantilla.
 
 ## Pendiente de validación legal
 
@@ -183,7 +186,7 @@ pip install -r requirements.txt
 pytest jornada40/tests/ -v
 ```
 
-95 pruebas, todas pasando.
+96 pruebas, todas pasando.
 
 ## Verificación rápida
 

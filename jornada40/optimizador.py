@@ -90,7 +90,12 @@ def catalogo_turnos(hora_apertura: int, hora_cierre: int) -> list[dict]:
     cierra. Descanso a la mitad de cada turno (inicio + 4 h). Si la tienda
     abre 8 h o menos, un solo turno cubre todo el día.
 
-    Cada turno: {"turno", "inicio", "fin", "pausa"} (horas enteras, fin exclusivo).
+    Cada turno: {"turno", "inicio", "fin", "pausa", "pausas"} (horas enteras,
+    fin exclusivo). "pausas" son las horas en que cada PERSONA puede tomar su
+    descanso (4.ª, 5.ª o 6.ª hora del turno); el optimizador reparte a la
+    gente entre ellas para que el turno nunca se vacíe de golpe en una hora
+    pico. "pausa" es la opción central (la que se usa al mover a alguien a
+    mano).
     """
     hora_apertura, hora_cierre = int(hora_apertura), int(hora_cierre)
     dur = min(DURACION_TURNO_H, hora_cierre - hora_apertura)
@@ -105,7 +110,8 @@ def catalogo_turnos(hora_apertura: int, hora_cierre: int) -> list[dict]:
         NOMBRES_TURNO[0], *NOMBRES_TURNO[1:len(inicios) - 1], NOMBRES_TURNO[-1]
     ][:len(inicios)]
     return [
-        {"turno": n, "inicio": i, "fin": i + dur, "pausa": i + dur // 2}
+        {"turno": n, "inicio": i, "fin": i + dur, "pausa": i + dur // 2,
+         "pausas": ([i + dur // 2 - 1, i + dur // 2, i + dur // 2 + 1] if dur >= 6 else [i + dur // 2])}
         for n, i in zip(nombres, inicios)
     ]
 
@@ -165,7 +171,9 @@ def construir_modelo(
     t_idx = range(len(turnos))
 
     model = cp_model.CpModel()
-    x: dict = {}  # (e, d, t) -> Bool: la persona e trabaja el turno t el día d
+    # (e, d, t, p) -> Bool: la persona e trabaja el turno t el día d y toma
+    # su descanso a la hora p (una de turnos[t]["pausas"]).
+    x: dict = {}
     for emp in empleados.itertuples(index=False):
         e = emp.empleado_id
         for d in dias:
@@ -173,8 +181,9 @@ def construir_modelo(
                 continue
             vars_dia = []
             for t in t_idx:
-                x[(e, d, t)] = model.NewBoolVar(f"x_{e}_{d}_{t}")
-                vars_dia.append(x[(e, d, t)])
+                for p in turnos[t]["pausas"]:
+                    x[(e, d, t, p)] = model.NewBoolVar(f"x_{e}_{d}_{t}_{p}")
+                    vars_dia.append(x[(e, d, t, p)])
             model.AddAtMostOne(vars_dia)
 
     horas_ordinarias: dict = {}
@@ -182,12 +191,12 @@ def construir_modelo(
     horas_extra_triple: dict = {}
     for emp in empleados.itertuples(index=False):
         e = emp.empleado_id
-        dias_trab = [x[(e, d, t)] for d in dias for t in t_idx if (e, d, t) in x]
+        dias_trab = [v for (ee, _d, _t, _p), v in x.items() if ee == e]
         model.Add(sum(dias_trab) <= int(dias_trabajo_max))
         horas_semana = model.NewIntVar(0, jornada_semanal_cap, f"hs_{e}")
         model.Add(horas_semana == sum(
-            (turnos[t]["fin"] - turnos[t]["inicio"]) * x[(e, d, t)]
-            for d in dias for t in t_idx if (e, d, t) in x
+            (turnos[t]["fin"] - turnos[t]["inicio"]) * v
+            for (ee, _d, t, _p), v in x.items() if ee == e
         ))
         horas_ordinarias[e] = model.NewIntVar(0, int(tope_semanal), f"ho_{e}")
         horas_extra_doble[e] = model.NewIntVar(0, int(tope_extra_doble), f"hed_{e}")
@@ -196,7 +205,8 @@ def construir_modelo(
 
     # Qué turnos cubren (trabajando, no en pausa) cada hora.
     turnos_que_cubren = {
-        h: [t for t in t_idx if turnos[t]["inicio"] <= h < turnos[t]["fin"] and turnos[t]["pausa"] != h]
+        h: [(t, p) for t in t_idx for p in turnos[t]["pausas"]
+            if turnos[t]["inicio"] <= h < turnos[t]["fin"] and p != h]
         for h in horas_del_dia
     }
     empleados_por_rol = {rol: list(empleados.loc[empleados["rol"] == rol, "empleado_id"]) for rol in roles}
@@ -208,8 +218,8 @@ def construir_modelo(
     for d in dias:
         for h in horas_del_dia:
             for rol in roles:
-                terms = [x[(e, d, t)] for e in empleados_por_rol[rol]
-                         for t in turnos_que_cubren[h] if (e, d, t) in x]
+                terms = [x[(e, d, t, p)] for e in empleados_por_rol[rol]
+                         for (t, p) in turnos_que_cubren[h] if (e, d, t, p) in x]
                 n_max = max(1, len(empleados_por_rol[rol]))
                 cob_var = model.NewIntVar(0, n_max, f"cob_{d}_{h}_{rol}")
                 model.Add(cob_var == (sum(terms) if terms else 0))
@@ -260,11 +270,11 @@ def _extraer_turnos(solver: cp_model.CpSolver, variables: dict) -> pd.DataFrame:
     """Una fila por persona y día trabajado: qué turno fijo le tocó."""
     turnos = variables["turnos"]
     filas = []
-    for (e, d, t), var in variables["x"].items():
+    for (e, d, t, p), var in variables["x"].items():
         if solver.Value(var):
             tt = turnos[t]
             filas.append({"empleado_id": e, "fecha": d, "turno": tt["turno"],
-                          "hora_inicio": tt["inicio"], "hora_fin": tt["fin"], "hora_pausa": tt["pausa"]})
+                          "hora_inicio": tt["inicio"], "hora_fin": tt["fin"], "hora_pausa": p})
     cols = ["empleado_id", "fecha", "turno", "hora_inicio", "hora_fin", "hora_pausa"]
     return pd.DataFrame(filas, columns=cols)
 

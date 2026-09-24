@@ -26,7 +26,7 @@ from jornada40 import (auditoria, calendario, costos_ahorro, datos_sinteticos, d
                         escenario_base, notificaciones, optimizador, reglas, usuarios, vista_red)
 
 st.set_page_config(page_title="Alvea", page_icon=":material/calendar_month:", layout="wide",
-                   initial_sidebar_state="expanded")
+                   initial_sidebar_state="auto")
 
 DATA_DIR = Path("data")
 TIEMPO_LIMITE_SEG = 10.0
@@ -147,6 +147,22 @@ def calcular_semana_tienda(tienda_id: str, domingo: date, version_datos: int) ->
     return reporte
 
 
+@st.cache_resource
+def registro_calculadas() -> set:
+    """(tienda, semana, versión de datos) ya calculadas en este servidor. Compartido entre
+    sesiones: si HQ prepara las 50 tiendas antes de la demo, todos las ven al instante."""
+    return set()
+
+
+def marcar_calculada(tienda_id: str, domingo: date) -> None:
+    registro_calculadas().add((tienda_id, domingo, version_datos()))
+    st.session_state.setdefault("_semanas_vistas", set()).add((tienda_id, domingo))
+
+
+def esta_calculada(tienda_id: str, domingo: date) -> bool:
+    return (tienda_id, domingo, version_datos()) in registro_calculadas()
+
+
 def version_datos() -> int:
     return int(st.session_state.get("version_datos", 0))
 
@@ -240,10 +256,17 @@ section[data-testid="stSidebar"] { background: #f7f7f9; border-right: 1px solid 
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] { padding-top: 0.5rem; }
 section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] { height: 2.2rem; }
 section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] { gap: 0.2rem; }
+section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.sb-grupo) { margin-bottom: 6px; overflow: visible; }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(.sb-grupo) { margin-bottom: 0 !important; }
+.sb-grupo { display: block; min-height: 28px; box-sizing: border-box; }
+/* cargador de archivos en español */
+[data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
+[data-testid="stFileUploaderDropzone"] button { font-size: 0 !important; }
+[data-testid="stFileUploaderDropzone"] button::after { content: "Elegir CSV"; font-size: 13.5px; }
 .sb-marca { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; padding: 2px 10px 0; }
 .sb-sub { font-size: 12px; color: var(--ink-2); padding: 0 10px 18px; }
 .sb-grupo { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-            color: var(--ink-3); padding: 14px 10px 4px; }
+            color: var(--ink-3); padding: 16px 10px 6px; line-height: 1; }
 div[class*="st-key-nav_"] button {
   width: 100%; justify-content: flex-start; border: none; background: transparent; box-shadow: none;
   border-radius: 8px; padding: 7px 10px; min-height: 0; color: var(--ink); }
@@ -257,7 +280,7 @@ div[class*="st-key-nav_"] button:focus:not(:active) { color: var(--ink); border:
              font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex: 0 0 32px; }
 .sb-nombre { font-size: 13px; font-weight: 600; line-height: 1.2; }
 .sb-ambito { font-size: 11.5px; color: var(--ink-2); }
-div[class*="st-key-sb_salir"] button, div[class*="st-key-sb_correo"] button {
+div[class*="st-key-sb_salir"] button {
   width: 100%; border-radius: 8px; border: 1px solid var(--line-2); background: #fff;
   font-size: 13px; min-height: 0; padding: 6px 10px; color: var(--ink); }
 
@@ -338,6 +361,17 @@ div[class*="st-key-sem_"][class*="-hoy"] button { color: var(--accent); }
 .aviso-mal { border-left: 4px solid var(--bad); }
 .seccion { font-size: 15px; font-weight: 650; margin: 18px 0 8px; }
 div[data-testid="stExpander"] { border-radius: 12px; border-color: var(--line); background: #fff; }
+div[class*="st-key-panel_cambio"] { background: #fff; border-radius: 14px !important; border-color: var(--line) !important;
+  margin-bottom: 16px; }
+div[class*="st-key-panel_cambio"] .aviso { margin-bottom: 0; }
+div[class*="st-key-panel_calcular"] { background: #fff; border-radius: 14px !important; border-color: var(--line) !important; }
+@media (max-width: 640px) {
+  div[data-testid="stHorizontalBlock"]:has(div[class*="st-key-navf_hoy"]) { flex-wrap: wrap !important; gap: 8px !important; }
+  div[data-testid="stHorizontalBlock"]:has(div[class*="st-key-navf_hoy"]) > div[data-testid="stColumn"] {
+    width: auto !important; flex: 0 0 auto !important; min-width: 0 !important; }
+  .nav-titulo { font-size: 17px; white-space: normal; margin-bottom: 8px; }
+  .pg-titulo { font-size: 24px; }
+}
 </style>
 """
 
@@ -648,7 +682,7 @@ def pagina_horario() -> None:
 
 
 def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
-    calculadas = {k[1] for k in st.session_state.get("_semanas_vistas", set()) if k[0] == tienda_id}
+    calculadas = {k[1] for k in registro_calculadas() if k[0] == tienda_id and k[2] == version_datos()}
     cols = st.columns(7)
     for c, n in zip(cols, calendario.DIAS_SEMANA_ABREV):
         c.markdown(f"<div class='cal-dow'>{n}</div>", unsafe_allow_html=True)
@@ -703,7 +737,7 @@ def tiles_dinero(rep: dict) -> None:
 
 def vista_semana(tienda_id: str, semana: date) -> None:
     rep = obtener_semana(tienda_id, semana)
-    st.session_state.setdefault("_semanas_vistas", set()).add((tienda_id, semana))
+    marcar_calculada(tienda_id, semana)
     if rep["status"] == "INFEASIBLE":
         aviso("<b>No hay un horario legal posible esta semana</b> con la plantilla actual.", "mal")
         return
@@ -770,7 +804,7 @@ def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date) -> None:
 def vista_dia(tienda_id: str, f: date) -> None:
     semana = calendario.semana_de(f)[0]
     rep = obtener_semana(tienda_id, semana)
-    st.session_state.setdefault("_semanas_vistas", set()).add((tienda_id, semana))
+    marcar_calculada(tienda_id, semana)
     if rep["status"] == "INFEASIBLE":
         aviso("<b>No hay un horario legal posible esta semana</b> con la plantilla actual.", "mal")
         return
@@ -794,75 +828,92 @@ def vista_dia(tienda_id: str, f: date) -> None:
         ("Ausencias", f"{len(ausentes)}", "faltas previstas", "ojo" if ausentes else ""),
     ])
 
-    # --- calificación del último cambio (arriba, donde se ve) ---
-    calif = st.session_state.get(f"calif_{clave}")
-    if calif and ediciones:
-        tipo = {"Neutral": "bien", "Aceptable": "ojo", "Caro": "ojo"}.get(calif["calificacion"], "mal")
-        c_msg, c_btn = st.columns([5, 1], vertical_alignment="center")
-        with c_msg:
-            aviso(f"<b>{calif['calificacion']}.</b> {calif['mensaje']} "
-                  f"<span style='color:#6e6e73'>({len(ediciones)} cambio(s) en esta semana)</span>", tipo)
-        if c_btn.button("Deshacer", icon=":material/undo:", key="deshacer"):
-            ediciones.pop()
-            st.session_state.pop(f"calif_{clave}", None)
-            if ediciones:
-                _calificar(rep, tienda_id, clave)
-            st.rerun()
+    # --- cambiar a alguien de turno (solo gerente): acción + resultado juntos, arriba ---
+    if auth["rol"] == "manager":
+        _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo)
+    else:
+        st.markdown("<div class='leyenda' style='margin:-6px 0 14px'>Vista de lectura: los cambios de turno "
+                    "los hace el gerente de la tienda.</div>", unsafe_allow_html=True)
 
     # --- 4 columnas, una por turno ---
     cols = st.columns(len(catalogo), gap="small")
     for c, t in zip(cols, catalogo):
-        gente = t_dia[t_dia["turno"] == t["turno"]]["empleado_id"].tolist()
-        gente.sort(key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
+        del_turno = t_dia[t_dia["turno"] == t["turno"]]
+        pausa_de = dict(zip(del_turno["empleado_id"], del_turno["hora_pausa"]))
+        gente = sorted(pausa_de, key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
         filas = "".join(
             f"<div class='persona{' cambio' if e in editados_hoy else ''}'><span>{nombre.get(e, e)}</span>"
-            f"<span class='rol'>{ROL_ETIQUETA.get(rol.get(e), '')}</span></div>" for e in gente
+            f"<span class='rol'>{ROL_ETIQUETA.get(rol.get(e), '')} · {int(pausa_de[e])} h</span></div>"
+            for e in gente
         ) or "<div class='leyenda' style='padding:6px 0'>Nadie en este turno</div>"
+        ventana = t.get("pausas", [t["pausa"]])
+        desc = (f"descansos {min(ventana)}–{max(ventana) + 1} h" if len(ventana) > 1 else f"descanso {ventana[0]} h")
         c.markdown(
             f"<div class='turno-card'><div class='turno-cab' style='border-top:4px solid {COLOR_TURNO.get(t['turno'])}'>"
             f"<div class='turno-nombre'>{t['turno']}<span style='margin-left:auto;font-variant-numeric:tabular-nums'>"
             f"{len(gente)}</span></div>"
-            f"<div class='turno-horas'>{t['inicio']}:00 – {t['fin']}:00 · descanso {t['pausa']}:00</div></div>"
+            f"<div class='turno-horas'>{t['inicio']}:00 – {t['fin']}:00 · {desc}</div></div>"
             f"<div class='turno-lista'>{filas}</div></div>", unsafe_allow_html=True)
+    st.markdown("<div class='leyenda' style='margin-top:6px'>Junto a cada nombre: su área y la hora en que "
+                "toma su descanso (escalonados para que el turno nunca se vacíe).</div>", unsafe_allow_html=True)
 
     grafica_cobertura(rep, t_dia, f)
 
-    # --- cambiar a alguien de turno: solo el gerente de la tienda ---
-    if auth["rol"] != "manager":
-        st.markdown("<div class='leyenda' style='margin-top:14px'>Los cambios de turno los hace el gerente "
-                    "de la tienda; aquí se ven en modo lectura.</div>", unsafe_allow_html=True)
-        return
-    st.markdown("<div class='seccion'>Cambiar a alguien de turno</div>", unsafe_allow_html=True)
-    turno_de = dict(zip(t_dia["empleado_id"], t_dia["turno"]))
-    candidatos = [e for e in plantilla["empleado_id"] if e not in ausentes]
-    candidatos.sort(key=lambda e: nombre.get(e, e))
-    c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="bottom")
-    emp = c1.selectbox("Persona", candidatos, index=None, placeholder="Busca por nombre…", key=f"cmb_emp_{f}",
-                       format_func=lambda e: f"{nombre.get(e, e)} · {ROL_ETIQUETA.get(rol.get(e), '')} · "
-                                             f"{turno_de.get(e, 'descansa')}")
-    opciones = [t["turno"] for t in catalogo] + ["Descanso"]
-    actual = turno_de.get(emp, "Descanso") if emp else None
-    nuevo = c2.selectbox("Nuevo turno", [o for o in opciones if o != actual], index=None,
-                         placeholder="Elige turno", key=f"cmb_turno_{f}_{emp}", disabled=emp is None)
-    if c3.button("Cambiar", type="primary", disabled=not (emp and nuevo), key=f"cmb_ok_{f}", width="stretch"):
-        prueba = ediciones + [(emp, f, None if nuevo == "Descanso" else nuevo)]
-        st.session_state["ediciones"][clave] = prueba
-        problema = validar_legal(turnos_vigentes(rep, tienda_id), emp, rep["anio"])
-        if problema:
-            st.session_state["ediciones"][clave] = ediciones
-            st.error(f"No se puede: {nombre.get(emp, emp)} {problema}")
-        else:
-            calif = _calificar(rep, tienda_id, clave)
-            registrar("turno_reasignado", f"{nombre.get(emp, emp)} ({emp}) → {nuevo}, {f.isoformat()}",
-                      alcance=("tienda", tienda_id))
-            if calif["calificacion"] in ("No recomendado", "Costoso", "Caro"):
-                zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
-                notificaciones.crear_notificacion(
-                    DATA_DIR, "zona", zona, "turno_calificado",
-                    "critico" if calif["calificacion"] == "No recomendado" else "advertencia",
-                    f"Tienda {tienda_id}: un cambio manual de turno quedó como '{calif['calificacion']}' "
-                    f"({mxn(calif['delta_costo_mxn'])} MXN/semana).")
+
+def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo) -> None:
+    ediciones = st.session_state["ediciones"].setdefault(clave, [])
+    with st.container(border=True, key="panel_cambio"):
+        st.markdown("<div class='seccion' style='margin-top:0'>Cambiar a alguien de turno</div>",
+                    unsafe_allow_html=True)
+        turno_de = dict(zip(t_dia["empleado_id"], t_dia["turno"]))
+        candidatos = sorted((e for e in plantilla["empleado_id"] if e not in ausentes),
+                            key=lambda e: nombre.get(e, e))
+        c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="bottom")
+        emp = c1.selectbox("Persona", candidatos, index=None, placeholder="Busca por nombre…",
+                           key=f"cmb_emp_{f}_{len(ediciones)}",
+                           format_func=lambda e: f"{nombre.get(e, e)} · {ROL_ETIQUETA.get(rol.get(e), '')} · "
+                                                 f"{turno_de.get(e, 'descansa')}")
+        opciones = [t["turno"] for t in catalogo] + ["Descanso"]
+        actual = turno_de.get(emp, "Descanso") if emp else None
+        nuevo = c2.selectbox("Nuevo turno", [o for o in opciones if o != actual], index=None,
+                             placeholder="Elige turno", key=f"cmb_turno_{f}_{emp}_{len(ediciones)}",
+                             disabled=emp is None)
+        if c3.button("Cambiar", type="primary", disabled=not (emp and nuevo), key=f"cmb_ok_{f}", width="stretch"):
+            st.session_state["ediciones"][clave] = ediciones + [(emp, f, None if nuevo == "Descanso" else nuevo)]
+            problema = validar_legal(turnos_vigentes(rep, tienda_id), emp, rep["anio"])
+            if problema:
+                st.session_state["ediciones"][clave] = ediciones
+                st.session_state[f"error_{clave}"] = f"No se puede: {nombre.get(emp, emp)} {problema}"
+            else:
+                st.session_state.pop(f"error_{clave}", None)
+                calif = _calificar(rep, tienda_id, clave)
+                registrar("turno_reasignado", f"{nombre.get(emp, emp)} ({emp}) → {nuevo}, {f.isoformat()}",
+                          alcance=("tienda", tienda_id))
+                if calif["calificacion"] in ("No recomendado", "Costoso", "Caro"):
+                    zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
+                    notificaciones.crear_notificacion(
+                        DATA_DIR, "zona", zona, "turno_calificado",
+                        "critico" if calif["calificacion"] == "No recomendado" else "advertencia",
+                        f"Tienda {tienda_id} · {fmt_dia(f)}: el gerente movió a {nombre.get(emp, emp)} a "
+                        f"{nuevo}. {calif['calificacion']}: {calif['mensaje']}")
             st.rerun()
+
+        error = st.session_state.get(f"error_{clave}")
+        calif = st.session_state.get(f"calif_{clave}")
+        if error:
+            aviso(error, "mal")
+        elif calif and ediciones:
+            tipo = {"Neutral": "bien", "Aceptable": "ojo", "Caro": "ojo"}.get(calif["calificacion"], "mal")
+            c_msg, c_btn = st.columns([5, 1], vertical_alignment="center")
+            with c_msg:
+                aviso(f"<b>{calif['calificacion']}.</b> {calif['mensaje']} "
+                      f"<span style='color:#6e6e73'>· {len(ediciones)} cambio(s) esta semana</span>", tipo)
+            if c_btn.button("Deshacer", icon=":material/undo:", key="deshacer", width="stretch"):
+                ediciones.pop()
+                st.session_state.pop(f"calif_{clave}", None)
+                if ediciones:
+                    _calificar(rep, tienda_id, clave)
+                st.rerun()
 
 
 def _calificar(rep: dict, tienda_id: str, clave: tuple) -> dict:
@@ -885,7 +936,7 @@ def pagina_tienda() -> None:
         tienda_id = selector_tienda("tda_tienda")
     barra_fechas(f"{fmt_rango_semana(semana)} {pill_regimen(semana)}", "semana", "tda")
     rep = obtener_semana(tienda_id, semana)
-    st.session_state.setdefault("_semanas_vistas", set()).add((tienda_id, semana))
+    marcar_calculada(tienda_id, semana)
     if rep["status"] == "INFEASIBLE":
         aviso("<b>No hay un horario legal posible esta semana</b> con la plantilla actual.", "mal")
         return
@@ -919,6 +970,8 @@ def pagina_tienda() -> None:
     export = turnos.merge(plantilla[["empleado_id", "nombre", "rol"]], on="empleado_id", how="left") \
         .sort_values(["fecha", "hora_inicio", "nombre"])[
         ["fecha", "turno", "hora_inicio", "hora_fin", "hora_pausa", "empleado_id", "nombre", "rol"]]
+    export["rol"] = export["rol"].map(ROL_ETIQUETA).fillna(export["rol"])
+    export.columns = ["Fecha", "Turno", "Entra", "Sale", "Descanso", "ID", "Nombre", "Área"]
     reporte_txt = (
         f"Alvea — Tienda {tienda_id}\nSemana {fmt_rango_semana(semana)} · jornada {horas_regimen(semana)} h "
         f"({anio_regimen(semana)})\n\n{rep['resumen_ejecutivo']}\n\n"
@@ -951,18 +1004,23 @@ def pagina_resumen() -> None:
     encabezado("Resumen", f"Ahorro de la semana en {alcance} · {len(visibles)} tiendas.")
     barra_fechas(f"{fmt_rango_semana(semana)} {pill_regimen(semana)}", "semana", "res")
     ids = list(visibles["tienda_id"])
-    listas = [t for t in ids if (t, semana) in st.session_state.get("_semanas_vistas", set())]
+    listas = [t for t in ids if esta_calculada(t, semana)]
     faltan = [t for t in ids if t not in listas]
     if faltan:
-        c1, c2 = st.columns([3, 1], vertical_alignment="center")
-        c1.markdown(f"<div class='leyenda'>{len(listas)} de {len(ids)} tiendas calculadas para esta semana. "
-                    f"Cada tienda tarda unos segundos.</div>", unsafe_allow_html=True)
-        if c2.button(f"Calcular {len(faltan)} tiendas", type="primary", width="stretch"):
+        with st.container(border=True, key="panel_calcular"):
+            c1, c2 = st.columns([3, 1], vertical_alignment="center")
+            titulo = ("Calcula el ahorro de esta semana" if not listas
+                      else f"Faltan {len(faltan)} de {len(ids)} tiendas")
+            c1.markdown(f"<div style='font-weight:650;font-size:15px'>{titulo}</div>"
+                        f"<div class='leyenda'>{len(listas)} de {len(ids)} tiendas listas. Cada tienda tarda unos "
+                        f"segundos; lo calculado queda disponible para todos.</div>", unsafe_allow_html=True)
+            calcular = c2.button(f"Calcular {len(faltan)} tiendas", type="primary", width="stretch")
+        if calcular:
             barra = st.progress(0.0)
             for i, t in enumerate(faltan):
                 barra.progress(i / len(faltan), text=f"Tienda {t} ({i + 1} de {len(faltan)})")
                 calcular_semana_tienda(t, semana, version_datos())
-                st.session_state.setdefault("_semanas_vistas", set()).add((t, semana))
+                marcar_calculada(t, semana)
             registrar("red_calculada", f"{len(faltan)} tiendas, semana {semana.isoformat()}")
             st.rerun()
     if not listas:
@@ -981,8 +1039,9 @@ def pagina_resumen() -> None:
     rk = rk.sort_values("ahorro_pct", ascending=False).copy()
     rk["Tienda"] = rk["tienda_id"]
     rk["Estado"] = rk["cumple_minimo_8pct"].map({True: "En meta", False: "Debajo de 8%"})
-    barras = alt.Chart(rk).mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4, size=14).encode(
-        y=alt.Y("Tienda:N", sort=None, title=None, axis=alt.Axis(labelColor="#6e6e73", tickSize=0, domain=False)),
+    barras = alt.Chart(rk).mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4, size=16).encode(
+        y=alt.Y("Tienda:N", sort=None, title=None, axis=alt.Axis(labelColor="#6e6e73", tickSize=0, domain=False,
+                                                                 labelOverlap=False, labelPadding=8)),
         x=alt.X("ahorro_pct:Q", title=None, axis=alt.Axis(format=".0%", gridColor="#f0f0f3", labelColor="#6e6e73",
                                                             domain=False, tickSize=0, tickCount=5)),
         color=alt.Color("Estado:N", scale=alt.Scale(domain=["En meta", "Debajo de 8%"],
@@ -993,7 +1052,7 @@ def pagina_resumen() -> None:
                  alt.Tooltip("ahorro_mxn:Q", title="MXN", format="$,.0f")])
     meta = alt.Chart(pd.DataFrame({"x": [0.08]})).mark_rule(color="#1d1d1f", strokeDash=[4, 3]).encode(x="x:Q")
     st.markdown("<div class='seccion'>Ahorro por tienda</div>", unsafe_allow_html=True)
-    st.altair_chart((barras + meta).properties(height=max(160, 22 * len(rk))).configure_view(strokeWidth=0),
+    st.altair_chart((barras + meta).properties(height=max(160, 28 * len(rk))).configure_view(strokeWidth=0),
                     width="stretch")
     st.caption("Línea punteada = meta mínima de 8%.")
     with st.expander("Ver tabla"):
@@ -1033,7 +1092,7 @@ def pagina_avisos() -> None:
 
 def pagina_historial() -> None:
     encabezado("Historial", "Quién hizo qué y cuándo, dentro de tu alcance.")
-    df = auditoria.visible_para(auditoria.cargar_auditoria(DATA_DIR), auth)
+    df = auditoria.visible_para(auditoria.cargar_auditoria(DATA_DIR), auth, set(visibles["tienda_id"]))
     df = df[df["tipo_evento"] != "pagina_visitada"] if not df.empty else df
     if df.empty:
         aviso("Todavía no hay movimientos.", "bien")
@@ -1049,6 +1108,7 @@ def pagina_historial() -> None:
     df = df.sort_values("timestamp", ascending=False).copy()
     df["Qué pasó"] = df["tipo_evento"].map(lambda t: auditoria.TIPOS_EVENTO.get(t, t))
     df["Cuándo"] = df["timestamp"].astype(str).str[:16].str.replace("T", " ")
+    df["detalle"] = df["detalle"].fillna("").astype(str).replace({"None": "", "nan": ""})
     st.dataframe(df[["Cuándo", "usuario", "Qué pasó", "alcance_valor", "detalle"]], hide_index=True,
                  width="stretch", column_config={"usuario": "Quién", "alcance_valor": "Dónde",
                                                  "detalle": "Detalle"})
@@ -1145,7 +1205,7 @@ def pagina_datos() -> None:
         registrar("datos_restablecidos")
         st.rerun()
     en_uso = st.session_state.get("datos_subidos")
-    aviso(f"<b>En uso:</b> {', '.join(nombres[k] for k in en_uso)} propios; el resto, ejemplo." if en_uso
+    aviso(f"<b>En uso:</b> tus archivos de {', '.join(nombres[k].lower() for k in en_uso)}; el resto, ejemplo." if en_uso
           else "<b>En uso:</b> datos de ejemplo (marca ficticia, 100% sintéticos).", "bien")
 
 

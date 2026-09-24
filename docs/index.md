@@ -27,13 +27,13 @@ para el detalle completo).
 
 ## Estado del PMV
 
-- 95 pruebas unitarias, todas pasando; cada página verificada sin errores
+- 96 pruebas unitarias, todas pasando; cada página verificada sin errores
   para Gerente, Admin de zona y Super Admin.
 - Horario desde hoy hasta diciembre de 2030; la jornada legal de cada
   semana sale sola de su fecha (48 → 40 h).
 - Optimizador con 4 turnos fijos por tienda; cambios manuales persona →
   turno, con bloqueo legal y calificación.
-- Ahorro calibrado: ~11–21% por tienda en 2026 y ~6–8% en 2030 (supuesto
+- Ahorro calibrado: ~23% en la red en 2026 y ~15–17% en 2030 (supuesto
   explícito: la plantilla actual opera al 60% de su capacidad en una semana
   promedio).
 - **Pendiente de validación legal**: tramo de tiempo extra al triple
