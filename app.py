@@ -670,21 +670,34 @@ def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
                 f"diciembre de 2030; la jornada baja sola cada año (48 → 40 h).</div>", unsafe_allow_html=True)
 
 
-def resumen_semana_tiles(rep: dict, turnos: pd.DataFrame) -> None:
-    ah = rep["ahorro_semanal"]
+def tiles_operacion(rep: dict, turnos: pd.DataFrame) -> None:
+    """Horario = operación: personas y cobertura. El dinero vive en Mi tienda / Resumen."""
     prop = rep["propuesta"]
-    pct = ah["ahorro_pct"]
     extra = (prop.get("horas_extra_doble") or 0) + (prop.get("horas_extra_triple") or 0)
     sin_cubrir = prop.get("horas_subdotacion_pico") or 0
+    horas = int((turnos["hora_fin"] - turnos["hora_inicio"]).sum())
     tiles([
-        ("Ahorro de la semana", mxn(ah["ahorro_total_mxn"]),
-         f"{pct:.1%} vs. el rol fijo de hoy", "", True),
-        ("Costo con este horario", mxn(ah["costo_propuesta_mxn"]), f"antes {mxn(ah['costo_base_mxn'])}"),
-        ("Personas con turno", f"{turnos['empleado_id'].nunique()}",
-         f"de {len(rep['plantilla'])} en plantilla"),
-        ("Horas extra", f"{extra:,}", "dobles + triples en la semana", "ojo" if extra else ""),
-        ("Horas pico sin cubrir", f"{sin_cubrir:,}", "falta gente en la hora más cargada" if sin_cubrir
+        ("Personas con turno", f"{turnos['empleado_id'].nunique()}", f"de {len(rep['plantilla'])} en plantilla"),
+        ("Horas programadas", f"{horas:,}", "en la semana"),
+        ("Horas extra", f"{extra:,}", "dobles + triples" if extra else "ninguna esta semana", "ojo" if extra else ""),
+        ("Horas pico sin cubrir", f"{sin_cubrir:,}", "falta gente en las horas más cargadas" if sin_cubrir
          else "cobertura completa", "mal" if sin_cubrir else "bien"),
+    ])
+
+
+def tiles_dinero(rep: dict) -> None:
+    """Mi tienda = dinero de la semana."""
+    ah, br = rep["ahorro_semanal"], rep["brecha_vs_techo"]
+    prop, base = rep["propuesta"], rep["base"]
+    extra_ev = ((base.get("horas_extra_doble_totales", 0) + base.get("horas_extra_triple_totales", 0))
+                - ((prop.get("horas_extra_doble") or 0) + (prop.get("horas_extra_triple") or 0)))
+    tiles([
+        ("Ahorro de la semana", mxn(ah["ahorro_total_mxn"]), f"{ah['ahorro_pct']:.1%} vs. el rol fijo de hoy",
+         "", True),
+        ("Costo con Alvea", mxn(ah["costo_propuesta_mxn"]), "nómina de la semana"),
+        ("Costo con el rol fijo", mxn(ah["costo_base_mxn"]), "cómo se programa hoy"),
+        ("Horas extra evitadas", f"{extra_ev:,.0f}", "dobles + triples"),
+        ("Del ahorro posible", f"{br.get('pct_del_techo_capturado', 0):.0%}", "captura vs. el máximo teórico"),
     ])
 
 
@@ -695,7 +708,7 @@ def vista_semana(tienda_id: str, semana: date) -> None:
         aviso("<b>No hay un horario legal posible esta semana</b> con la plantilla actual.", "mal")
         return
     turnos = turnos_vigentes(rep, tienda_id)
-    resumen_semana_tiles(rep, turnos)
+    tiles_operacion(rep, turnos)
     catalogo = rep["propuesta"]["catalogo_turnos"]
     cols = st.columns(7, gap="small")
     for i, c in enumerate(cols):
@@ -812,7 +825,13 @@ def vista_dia(tienda_id: str, f: date) -> None:
             f"<div class='turno-horas'>{t['inicio']}:00 – {t['fin']}:00 · descanso {t['pausa']}:00</div></div>"
             f"<div class='turno-lista'>{filas}</div></div>", unsafe_allow_html=True)
 
-    # --- cambiar a alguien de turno ---
+    grafica_cobertura(rep, t_dia, f)
+
+    # --- cambiar a alguien de turno: solo el gerente de la tienda ---
+    if auth["rol"] != "manager":
+        st.markdown("<div class='leyenda' style='margin-top:14px'>Los cambios de turno los hace el gerente "
+                    "de la tienda; aquí se ven en modo lectura.</div>", unsafe_allow_html=True)
+        return
     st.markdown("<div class='seccion'>Cambiar a alguien de turno</div>", unsafe_allow_html=True)
     turno_de = dict(zip(t_dia["empleado_id"], t_dia["turno"]))
     candidatos = [e for e in plantilla["empleado_id"] if e not in ausentes]
@@ -845,8 +864,6 @@ def vista_dia(tienda_id: str, f: date) -> None:
                     f"({mxn(calif['delta_costo_mxn'])} MXN/semana).")
             st.rerun()
 
-    grafica_cobertura(rep, t_dia, f)
-
 
 def _calificar(rep: dict, tienda_id: str, clave: tuple) -> dict:
     original = optimizador.turnos_a_horario(rep["propuesta"]["turnos_df"])
@@ -874,10 +891,9 @@ def pagina_tienda() -> None:
         return
     ah, br = rep["ahorro_semanal"], rep["brecha_vs_techo"]
     turnos = turnos_vigentes(rep, tienda_id)
-    resumen_semana_tiles(rep, turnos)
+    tiles_dinero(rep)
     if ah["cumple_minimo_8pct"]:
-        aviso(f"<b>Cumple la meta.</b> Ahorra {ah['ahorro_pct']:.1%} esta semana (la meta mínima es 8%) y "
-              f"captura {br.get('pct_del_techo_capturado', 0):.0%} del ahorro máximo teórico.", "bien")
+        aviso(f"<b>Cumple la meta.</b> Ahorra {ah['ahorro_pct']:.1%} esta semana; la meta mínima es 8%.", "bien")
     else:
         aviso(f"<b>Debajo de la meta.</b> Ahorra {ah['ahorro_pct']:.1%} (meta mínima 8%). "
               f"En años con jornada más corta la plantilla actual alcanza para menos horas; "
