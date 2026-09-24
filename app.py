@@ -1051,10 +1051,31 @@ elif pagina == "Calendario":
     elif st.session_state["cal_vista"] == "semana":
         semana_inicio = st.session_state.get("cal_semana_sel", FECHA_MIN_CAL)
         semana_fin = semana_inicio + timedelta(days=6)
-        st.markdown(f"<p style='color:#6e6e73;font-size:0.85rem;margin-bottom:0'>"
-                    f"{calendario.NOMBRES_MES[cal_mes]} {cal_anio}</p>", unsafe_allow_html=True)
-        st.subheader(f"Semana del {semana_inicio.day:02d}-{calendario.NOMBRES_MES[semana_inicio.month][:3]} "
-                     f"al {semana_fin.day:02d}-{calendario.NOMBRES_MES[semana_fin.month][:3]}-{semana_fin.year}")
+
+        # Navegación adelante/atrás (una semana) + breadcrumb clicable de
+        # vuelta a Mes -- antes "Diciembre 2026" era texto plano que parecía
+        # un link pero no hacía nada, y no había forma de moverse a la
+        # semana siguiente/anterior sin volver a Mes y hacer clic en otro
+        # día. Al cambiar de semana también actualizamos cal_anio/cal_mes
+        # para que la vista Mes, si se abre después, muestre el mes correcto.
+        snav1, snav2, snav3 = st.columns([1, 5, 1])
+        if snav1.button("◀", key="cal_semana_prev"):
+            _nueva_semana = semana_inicio - timedelta(days=7)
+            st.session_state["cal_semana_sel"] = _nueva_semana
+            st.session_state["cal_anio"], st.session_state["cal_mes"] = _nueva_semana.year, _nueva_semana.month
+            st.rerun()
+        with snav2:
+            if st.button(f"‹ {calendario.NOMBRES_MES[cal_mes]} {cal_anio}", key="cal_breadcrumb_mes",
+                         help="Volver a la vista de mes"):
+                st.session_state["cal_vista"] = "mes"
+                st.rerun()
+            st.subheader(f"Semana del {semana_inicio.day:02d}-{calendario.NOMBRES_MES[semana_inicio.month][:3]} "
+                         f"al {semana_fin.day:02d}-{calendario.NOMBRES_MES[semana_fin.month][:3]}-{semana_fin.year}")
+        if snav3.button("▶", key="cal_semana_next"):
+            _nueva_semana = semana_inicio + timedelta(days=7)
+            st.session_state["cal_semana_sel"] = _nueva_semana
+            st.session_state["cal_anio"], st.session_state["cal_mes"] = _nueva_semana.year, _nueva_semana.month
+            st.rerun()
 
         clave = (tienda_id, semana_inicio)
         if not calendario.semana_dentro_de_rango(semana_inicio, FECHA_MIN_CAL, FECHA_MAX_CAL):
@@ -1110,11 +1131,32 @@ elif pagina == "Calendario":
         fecha_d = st.session_state.get("cal_dia_sel", semana_inicio)
         nombre_dia = calendario.DIAS_SEMANA_ABREV[(fecha_d.weekday() + 1) % 7]
         _semana_fin_dia = semana_inicio + timedelta(days=6)
-        st.markdown(f"<p style='color:#6e6e73;font-size:0.85rem;margin-bottom:0'>"
-                    f"Semana del {semana_inicio.day:02d}-{calendario.NOMBRES_MES[semana_inicio.month][:3]} "
-                    f"al {_semana_fin_dia.day:02d}-{calendario.NOMBRES_MES[_semana_fin_dia.month][:3]}-{_semana_fin_dia.year}</p>",
-                    unsafe_allow_html=True)
-        st.subheader(f"{nombre_dia} {fecha_d.day:02d} de {calendario.NOMBRES_MES[fecha_d.month]}, {fecha_d.year}")
+
+        # Mismo patrón que en Semana: adelante/atrás (un día) + breadcrumb
+        # clicable de vuelta a Semana. Cruzar de domingo a sábado (o
+        # viceversa) cambia de semana -- recalculamos cal_semana_sel con
+        # calendario.semana_de() para que el reporte cacheado (clave
+        # tienda+semana) siga siendo el correcto en el siguiente rerun.
+        dnav1, dnav2, dnav3 = st.columns([1, 5, 1])
+        if dnav1.button("◀", key="cal_dia_prev"):
+            _nuevo_dia = fecha_d - timedelta(days=1)
+            st.session_state["cal_dia_sel"] = _nuevo_dia
+            st.session_state["cal_semana_sel"] = calendario.semana_de(_nuevo_dia)[0]
+            st.rerun()
+        with dnav2:
+            if st.button(
+                f"‹ Semana del {semana_inicio.day:02d}-{calendario.NOMBRES_MES[semana_inicio.month][:3]} "
+                f"al {_semana_fin_dia.day:02d}-{calendario.NOMBRES_MES[_semana_fin_dia.month][:3]}-{_semana_fin_dia.year}",
+                key="cal_breadcrumb_semana", help="Volver a la vista de semana",
+            ):
+                st.session_state["cal_vista"] = "semana"
+                st.rerun()
+            st.subheader(f"{nombre_dia} {fecha_d.day:02d} de {calendario.NOMBRES_MES[fecha_d.month]}, {fecha_d.year}")
+        if dnav3.button("▶", key="cal_dia_next"):
+            _nuevo_dia = fecha_d + timedelta(days=1)
+            st.session_state["cal_dia_sel"] = _nuevo_dia
+            st.session_state["cal_semana_sel"] = calendario.semana_de(_nuevo_dia)[0]
+            st.rerun()
 
         clave = (tienda_id, semana_inicio)
         reporte = st.session_state.get("cache_calendario", {}).get(clave)
@@ -1161,7 +1203,16 @@ elif pagina == "Calendario":
                          .agg(hora_inicio="min", hora_fin="max", horas_trabajadas="count").reset_index())
                 chips["hora_fin"] = chips["hora_fin"] + 1  # la última hora trabajada cubre hasta el fin de esa hora
                 chips["es_partido"] = (chips["hora_fin"] - chips["hora_inicio"]) != chips["horas_trabajadas"]
-                chips = chips.sort_values("hora_inicio").reset_index(drop=True)
+                # Se agrupan primero los turnos normales y después los
+                # partidos (dentro de cada grupo, por hora de inicio) --
+                # puramente para que el CSS de abajo pueda colorear por tipo
+                # con selectores nth-child de rango fijo (el widget de
+                # arrastre no deja poner una clase/color por casilla
+                # individual, así que el orden es la única palanca que
+                # tenemos). "Turno N" sigue siendo un simple contador
+                # secuencial sobre este nuevo orden.
+                chips = chips.sort_values(["es_partido", "hora_inicio"]).reset_index(drop=True)
+                _n_turnos_normales = int((~chips["es_partido"]).sum())
 
                 # Nombre por empleado_id, con fallback al propio ID -- si el
                 # gerente subió su propia plantilla (página "Cargar datos")
@@ -1193,6 +1244,18 @@ elif pagina == "Calendario":
                 st.write(f"**{len(chips)} turnos** — arrastra un nombre desde *Plantilla* hacia un turno para reasignarlo. "
                          f"Si el turno ya tenía a alguien, puede quedar visualmente junto al nuevo nombre; "
                          f"el sistema toma al que acabas de soltar como el asignado.")
+                st.markdown(
+                    "<p style='font-size:12px;color:#6e6e73;margin:2px 0 12px;'>"
+                    "<span style='display:inline-block;width:6px;height:6px;border-radius:999px;"
+                    "background:#0071e3;margin-right:4px;'></span>turno normal"
+                    "&nbsp;&nbsp;·&nbsp;&nbsp;"
+                    "<span style='display:inline-block;width:6px;height:6px;border-radius:999px;"
+                    "background:#ff9f0a;margin-right:4px;'></span>turno partido (con hueco)"
+                    "&nbsp;&nbsp;·&nbsp;&nbsp;"
+                    "<span style='display:inline-block;width:6px;height:6px;border-radius:999px;"
+                    "background:#c7c7cc;margin-right:4px;'></span>Plantilla = sin turno hoy</p>",
+                    unsafe_allow_html=True,
+                )
                 empleados_tienda = sorted(plantilla_t["empleado_id"].unique().tolist())
                 clave_edicion = (tienda_id, fecha_d)
 
@@ -1261,38 +1324,65 @@ elif pagina == "Calendario":
                     "items": [_etiqueta(e) for e in empleados_tienda if e not in asignados_hoy],
                 })
 
+                _total_turnos = len(chips)
                 resultado_drag = sort_items(
                     contenedores, multi_containers=True, direction="horizontal",
                     key=f"cal_dnd_{tienda_id}_{fecha_d.isoformat()}",
-                    # NOTA (23-sep-2026): la hoja de estilos que trae el componente
-                    # (streamlit_sortables) solo define flex/wrap para la clase
-                    # ".sortable-component.vertical" -- con direction="horizontal"
-                    # (como aquí) esa regla no aplica y ".sortable-component" queda
-                    # sin "display:flex", así que cada turno caía en su propio
-                    # renglón a todo lo ancho (un nombre solo, mucho espacio en
-                    # blanco) en vez de acomodarse en cuadrícula. Forzamos flex
-                    # explícitamente y le damos un ancho fijo a cada turno para
-                    # que varios quepan por fila; la última casilla (Plantilla,
-                    # siempre al final de `contenedores`) se deja a todo lo ancho
-                    # y con estilo punteado para distinguirla como "banco" de
-                    # gente sin turno, no como un turno más.
-                    custom_style="""
-                    .sortable-component{display:flex;flex-wrap:wrap;gap:10px;
-                        align-items:flex-start}
-                    .sortable-container{background:#ffffff;border:1px solid #d2d2d7;
-                        border-radius:10px;flex:0 1 210px;min-width:180px;
-                        max-width:230px;padding:8px;}
-                    .sortable-container:last-child{flex:1 1 100%;max-width:100%;
-                        background:#fafafa;border-style:dashed;border-color:#c7c7cc;}
-                    .sortable-container-header{font-size:0.72rem;font-weight:700;
-                        color:#1d1d1f;padding:4px 6px 8px;border-bottom:1px solid #f0f0f2;
-                        margin-bottom:4px;}
-                    .sortable-container-body{width:100%;min-height:44px;
-                        display:flex;flex-wrap:wrap;}
-                    .sortable-item{background:#f5f5f7;border:1px solid #ececec;
-                        border-radius:12px;padding:6px 12px;font-size:0.82rem;
+                    # NOTA (23/24-sep-2026): la hoja de estilos que trae el
+                    # componente (streamlit_sortables) solo define flex/wrap
+                    # para la clase ".sortable-component.vertical" -- con
+                    # direction="horizontal" (como aquí) esa regla no aplica
+                    # y ".sortable-component" queda sin "display:flex", así
+                    # que cada turno caía en su propio renglón a todo lo
+                    # ancho. Forzamos flex explícitamente y le damos un ancho
+                    # fijo a cada turno para que varios quepan por fila.
+                    #
+                    # El horario ahora es la banda de color de arriba
+                    # ("header", fuera/por encima) y el chip de la persona
+                    # vive dentro de una casilla gris ("body", la estructura
+                    # del horario) -- pidieron que el horario quedara
+                    # "por fuera" y el chip "dentro" en vez de verse como dos
+                    # elementos sueltos del mismo peso visual.
+                    #
+                    # Color por tipo de turno: el componente no deja poner
+                    # una clase/color distinto por casilla individual (el
+                    # texto del "header" se renderiza como texto plano, sin
+                    # HTML), así que la única palanca es el ORDEN de los
+                    # contenedores -- por eso `chips` se ordena arriba
+                    # (normales primero, partidos después) y aquí coloreamos
+                    # por rango de posición con nth-child: 1..n_normales =
+                    # azul, el resto de turnos = naranja, la última casilla
+                    # (Plantilla, siempre en la posición total_turnos+1) =
+                    # gris punteada.
+                    custom_style=f"""
+                    .sortable-component{{display:flex;flex-wrap:wrap;gap:14px;
+                        align-items:stretch}}
+                    .sortable-container{{background:#ffffff;border:1px solid #d2d2d7;
+                        border-radius:12px;flex:0 1 210px;min-width:190px;
+                        max-width:230px;padding:0;overflow:hidden;
+                        box-shadow:0 1px 2px rgba(0,0,0,.03);}}
+                    .sortable-container-header{{font-size:0.74rem;font-weight:700;
+                        color:#ffffff;background:#0071e3;padding:8px 10px;margin:0;
+                        letter-spacing:.01em;line-height:1.3;}}
+                    .sortable-container-body{{width:100%;min-height:56px;
+                        background:#f5f5f7;display:flex;flex-wrap:wrap;
+                        align-items:center;justify-content:center;padding:10px;
+                        box-sizing:border-box;}}
+                    .sortable-item{{background:#ffffff;border:1px solid #e5e5ea;
+                        border-radius:10px;padding:6px 12px;font-size:0.8rem;
                         font-weight:600;color:#1d1d1f;margin:3px;cursor:grab;
-                        white-space:pre-line;line-height:1.3;text-align:center;}
+                        white-space:pre-line;line-height:1.3;text-align:center;
+                        box-shadow:0 1px 2px rgba(0,0,0,.05);}}
+                    .sortable-container:nth-child(-n+{_n_turnos_normales}) .sortable-container-header{{
+                        background:#0071e3;}}
+                    .sortable-container:nth-child(n+{_n_turnos_normales + 1}):nth-child(-n+{_total_turnos}) .sortable-container-header{{
+                        background:#ff9f0a;}}
+                    .sortable-container:nth-child({_total_turnos + 1}) .sortable-container-header{{
+                        background:#f5f5f7;color:#6e6e73;}}
+                    .sortable-container:nth-child({_total_turnos + 1}) .sortable-container-body{{
+                        background:#fafafa;border:1px dashed #c7c7cc;}}
+                    .sortable-container:nth-child({_total_turnos + 1}){{
+                        flex:1 1 100%;max-width:100%;}}
                     """,
                 )
 
