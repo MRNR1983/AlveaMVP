@@ -30,6 +30,10 @@ st.set_page_config(page_title="Alvea", page_icon=":material/calendar_month:", la
 
 DATA_DIR = Path("data")
 TIEMPO_LIMITE_SEG = 10.0
+# Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
+# la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
+# modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
+VERSION_MODELO = "2026-09-24-descansos-escalonados"
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
 
@@ -120,7 +124,8 @@ def datos_semana(domingo: date) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False, max_entries=400)
-def calcular_semana_tienda(tienda_id: str, domingo: date, version_datos: int) -> dict:
+def calcular_semana_tienda(tienda_id: str, domingo: date, version_datos: int,
+                           version_modelo: str = VERSION_MODELO) -> dict:
     """Base (cómo se programa hoy) + propuesta del optimizador + techo, 1 tienda, 1 semana."""
     anio = anio_regimen(domingo)
     d = datos_semana(domingo)
@@ -155,12 +160,12 @@ def registro_calculadas() -> set:
 
 
 def marcar_calculada(tienda_id: str, domingo: date) -> None:
-    registro_calculadas().add((tienda_id, domingo, version_datos()))
+    registro_calculadas().add((tienda_id, domingo, version_datos(), VERSION_MODELO))
     st.session_state.setdefault("_semanas_vistas", set()).add((tienda_id, domingo))
 
 
 def esta_calculada(tienda_id: str, domingo: date) -> bool:
-    return (tienda_id, domingo, version_datos()) in registro_calculadas()
+    return (tienda_id, domingo, version_datos(), VERSION_MODELO) in registro_calculadas()
 
 
 def version_datos() -> int:
@@ -682,7 +687,8 @@ def pagina_horario() -> None:
 
 
 def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
-    calculadas = {k[1] for k in registro_calculadas() if k[0] == tienda_id and k[2] == version_datos()}
+    calculadas = {k[1] for k in registro_calculadas()
+                  if k[0] == tienda_id and k[2:] == (version_datos(), VERSION_MODELO)}
     cols = st.columns(7)
     for c, n in zip(cols, calendario.DIAS_SEMANA_ABREV):
         c.markdown(f"<div class='cal-dow'>{n}</div>", unsafe_allow_html=True)
