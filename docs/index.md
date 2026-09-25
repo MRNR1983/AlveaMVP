@@ -20,6 +20,7 @@ para el detalle completo).
 
 ## Empieza aquí
 
+- [Comparación contra el PDF del reto](comparacion_pdf.html)
 - [Manual de uso (toda la app) + checklist de verificación](manual.html)
 - [README — cómo correrlo, estructura, supuestos](https://github.com/MRNR1983/AlveaMVP/blob/main/README.md)
 - [Guion de demo (45 min con el CEO/CFO)](guion_demo.html)
@@ -33,7 +34,7 @@ para el detalle completo).
   semana sale sola de su fecha (48 → 40 h).
 - Optimizador con 4 turnos fijos por tienda; cambios manuales persona →
   turno, con bloqueo legal y calificación.
-- Ahorro calibrado: ~23% en la red en 2026 y ~15–17% en 2030 (supuesto
+- Ahorro con las 50 tiendas: 29% en 2026 (50/50 ≥ 8%, pico 100% cubierto) y ~20% en 2030 (supuesto
   explícito: la plantilla actual opera al 60% de su capacidad en una semana
   promedio).
 - **Pendiente de validación legal**: tramo de tiempo extra al triple

@@ -33,7 +33,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
-VERSION_MODELO = "2026-09-24-agregado-por-area"
+VERSION_MODELO = "2026-09-24-agregado-por-area-b"
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
 
@@ -838,18 +838,18 @@ def tiles_semana(rep: dict, turnos: pd.DataFrame, rd: pd.DataFrame) -> None:
 
 
 def tiles_dinero(rep: dict) -> None:
-    """Mi tienda = dinero de la semana."""
-    ah, br = rep["ahorro_semanal"], rep["brecha_vs_techo"]
-    prop, base = rep["propuesta"], rep["base"]
-    extra_ev = ((base.get("horas_extra_doble_totales", 0) + base.get("horas_extra_triple_totales", 0))
-                - ((prop.get("horas_extra_doble") or 0) + (prop.get("horas_extra_triple") or 0)))
+    """Mi tienda = dinero de la semana, desglosado como lo pide el reto:
+    horas extra evitadas y sobrestaffing evitado."""
+    ah = rep["ahorro_semanal"]
     tiles([
         ("Ahorro de la semana", mxn(ah["ahorro_total_mxn"]), f"{ah['ahorro_pct']:.1%} vs. el rol fijo de hoy",
          "", True),
-        ("Costo con Alvea", mxn(ah["costo_propuesta_mxn"]), "nómina de la semana"),
-        ("Costo con el rol fijo", mxn(ah["costo_base_mxn"]), "cómo se programa hoy"),
-        ("Horas extra evitadas", f"{extra_ev:,.0f}", "dobles + triples"),
-        ("Del ahorro posible", f"{br.get('pct_del_techo_capturado', 0):.0%}", "captura vs. el máximo teórico"),
+        ("Rol fijo de hoy", mxn(ah["costo_base_mxn"]), "costo de la semana"),
+        ("Con Alvea", mxn(ah["costo_propuesta_mxn"]), "costo de la semana"),
+        ("Horas extra evitadas", mxn(ah["costo_extra_evitado_mxn"]),
+         f"{ah['horas_extra_doble_evitadas'] + ah['horas_extra_triple_evitadas']:,.0f} h"),
+        ("Sobrestaffing evitado", mxn(ah["costo_sobrestaffing_evitado_mxn"]),
+         f"{ah['horas_sobrestaffing_evitadas']:,.0f} h de gente de más"),
     ])
 
 
@@ -1125,6 +1125,9 @@ def pagina_tienda() -> None:
          "Con Alvea": rep["propuesta"]["horas_extra_doble"]},
         {"Concepto": "Horas extra triples", "Rol fijo de hoy": base_rep.get("horas_extra_triple_totales", 0),
          "Con Alvea": rep["propuesta"]["horas_extra_triple"]},
+        {"Concepto": "Horas de más (sobrestaffing)",
+         "Rol fijo de hoy": round(costos_ahorro._normalizar(base_rep)["horas_sobrestaffing"]),
+         "Con Alvea": rep["propuesta"].get("horas_sobrestaffing") or 0},
         {"Concepto": "Costo de la semana (MXN)", "Rol fijo de hoy": round(ah["costo_base_mxn"]),
          "Con Alvea": round(ah["costo_propuesta_mxn"])},
     ])

@@ -68,13 +68,13 @@ operación (el dinero está en Mi tienda):
 
 | Cifra | Qué significa |
 | --- | --- |
-| Personas con turno | Cuántas de las 80 trabajan al menos un día |
-| Horas programadas | Horas de la semana, incluido el descanso pagado |
-| Horas extra | Dobles + triples que el horario necesita (aparecen en años de jornada corta) |
+| **Ahorro de la semana** | Pesos y % frente al rol fijo de hoy |
+| Rol fijo de hoy / Con Alvea | Costo de la semana de cada forma de programar |
+| Horas extra | Las que usa Alvea, y las del rol fijo para comparar |
 | Horas pico sin cubrir | Horas-persona que faltan en las horas más cargadas. 0 = cobertura completa |
 
-Debajo, los 7 días. Cada día muestra sus 4 turnos con su horario y cuántas
-personas tiene cada uno. **Toca el nombre del día** para abrirlo.
+Debajo, los 7 días: cada uno con sus 4 turnos, personas, ahorro del día y
+costo del rol fijo (los 7 días suman exacto el total de la semana). **Toca el nombre del día** para abrirlo.
 
 ### Día
 - Cuatro cifras: personas trabajando, horas programadas (incluye 1 h de
@@ -202,11 +202,12 @@ contra el Decreto DOF 01-05-2026.
 - El tramo de horas extra al triple (art. 68) está pendiente de validación
   legal.
 
-**Qué esperar de los números**: en 2026 (48 h) la red ahorra ~23% (tiendas
-entre ~18% y ~30%), sobre todo por evitar horas extra del rol fijo y
-acomodar mejor a la gente. En 2030 (40 h) el ahorro baja (~15–17% en las
-tiendas probadas) porque la misma plantilla alcanza para menos horas y
-aparecen horas extra — el efecto de la reforma que el CFO necesita ver.
+**Qué esperar de los números** (50 tiendas): en 2026 (48 h) la red ahorra
+29% y todas las tiendas pasan el 8%, sin horas pico descubiertas; el ahorro
+sale sobre todo de no tener gente de más (sobrestaffing) y de no pagar
+horas extra. En 2030 (40 h) baja a ~20% y algunas tiendas ya no alcanzan a
+cubrir todo el pico con la plantilla actual — el efecto de la reforma que el
+CFO necesita ver.
 
 ## Límites conocidos (honestos)
 

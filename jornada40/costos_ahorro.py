@@ -41,6 +41,15 @@ __all__ = [
 _PESO_PENALIZACION_SUBDOTACION_NUEVA = 3.0
 
 
+def _sobrestaffing_base(resultado: dict) -> float:
+    """Horas-persona de más en el escenario base (misma regla que el optimizador:
+    más de 1 persona por encima de lo requerido, por hora y área)."""
+    rh = resultado.get("resultado_horas")
+    if rh is None or len(rh) == 0:
+        return 0.0
+    return float((rh["personas_presentes"] - rh["personas_requeridas"] - 1).clip(lower=0).sum())
+
+
 def _normalizar(resultado: dict) -> dict:
     """Homogeniza los resultados de escenario_base.py y optimizador.py."""
     return {
@@ -48,7 +57,8 @@ def _normalizar(resultado: dict) -> dict:
         "horas_extra_doble": resultado.get("horas_extra_doble_totales", resultado.get("horas_extra_doble", 0.0)) or 0.0,
         "horas_extra_triple": resultado.get("horas_extra_triple_totales", resultado.get("horas_extra_triple", 0.0)) or 0.0,
         "horas_subdotacion": resultado.get("horas_subdotacion_totales", resultado.get("horas_subdotacion_pico", 0.0)) or 0.0,
-        "horas_sobrestaffing": resultado.get("horas_sobrestaffing", 0.0) or 0.0,
+        "horas_sobrestaffing": (resultado.get("horas_sobrestaffing") if resultado.get("horas_sobrestaffing") is not None
+                                else _sobrestaffing_base(resultado)),
         "costo_total_mxn": resultado.get("costo_total_mxn", 0.0) or 0.0,
     }
 

@@ -59,6 +59,16 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Capturas
+
+| | |
+| --- | --- |
+| ![Login](docs/capturas/01_login.png) | ![Semana](docs/capturas/02_horario_semana.png) |
+| ![Mes](docs/capturas/03_horario_mes.png) | ![Día](docs/capturas/04_horario_dia.png) |
+| ![Mi tienda](docs/capturas/05_mi_tienda.png) | ![Resumen](docs/capturas/06_resumen_zona.png) |
+
+Comparación punto por punto contra el PDF del reto: [`docs/comparacion_pdf.md`](docs/comparacion_pdf.md).
+
 ## Estructura del repo
 
 ```
@@ -133,9 +143,9 @@ capacidad de 80 FTE, por eso el ahorro salía en 50–70% (irreal). Ahora
 rol y formato bajo un supuesto explícito: **la plantilla actual opera al
 60% de su capacidad a 48 h en una semana promedio** (se probó 85% y la
 tienda se quedaba sin gente en la apertura). Con descansos escalonados
-por persona, el resultado es ~23% de ahorro en la red en 2026 y ~15–17%
-en 2030, cuando la jornada de 40 h ya obliga a pagar horas extra con la
-misma plantilla.
+por persona, turnos extendibles 2 h y el optimizador en dos pasos, el
+resultado con las 50 tiendas es 29% de ahorro en la red en 2026 (50/50
+tiendas ≥ 8%, 0 horas pico sin cubrir) y ~20% en 2030.
 
 ## Pendiente de validación legal
 
