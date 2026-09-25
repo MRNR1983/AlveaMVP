@@ -1,8 +1,8 @@
 # Guion de demo — 45 minutos con Juan S. Gomes (CEO/cofundador)
 
 Perfil de negocio, no técnico: abre con el número, no con la arquitectura.
-Antes de la llamada: entra como `SADMIN`, abre **Resumen** y calcula las
-50 tiendas de la semana actual (toma unos minutos; queda en memoria).
+Antes de la llamada: nada que preparar. Las semanas de la demo (2026 y
+2030) vienen precalculadas y el Resumen de las 50 tiendas abre al instante.
 
 ## 0–5 min: el problema en una frase
 "La reforma baja la jornada de 48 a 40 horas entre 2026 y 2030. Alvea arma

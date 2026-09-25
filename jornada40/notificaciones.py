@@ -31,6 +31,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from jornada40 import persistencia
+
 __all__ = [
     "SEVERIDADES", "crear_notificacion", "cargar_notificaciones",
     "cargar_leidas", "visible_para", "marcar_leidas", "no_leidas_para",
@@ -89,8 +91,10 @@ def crear_notificacion(
             previas = pd.read_csv(ruta)
             if list(previas.columns) != _COLS_NOTIF:   # archivo de una versión anterior: se migra
                 pd.concat([previas, fila], ignore_index=True).reindex(columns=_COLS_NOTIF).to_csv(ruta, index=False)
+                persistencia.subir(ruta)
                 return
         fila.to_csv(ruta, mode="a", header=not ruta.exists(), index=False)
+        persistencia.subir(ruta)
     except Exception:
         pass
 
@@ -144,6 +148,7 @@ def marcar_leidas(data_dir: Path, ids: list[str], usuario: str) -> None:
         filas = pd.DataFrame([{"id": i, "usuario": usuario} for i in ids])
         ruta = _ruta_leidas(data_dir)
         filas.to_csv(ruta, mode="a", header=not ruta.exists(), index=False)
+        persistencia.subir(ruta)
     except Exception:
         pass
 

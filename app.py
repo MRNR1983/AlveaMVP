@@ -25,7 +25,8 @@ import pandas as pd
 import streamlit as st
 
 from jornada40 import (auditoria, calendario, costos_ahorro, datos_sinteticos, demanda_personal,
-                        escenario_base, notificaciones, optimizador, reglas, usuarios, vista_red)
+                        escenario_base, notificaciones, optimizador, persistencia, precalculado, reglas, usuarios, vista_red)
+from jornada40 import semana as semana_calc
 
 # Streamlit Cloud recarga app.py en cada deploy, pero puede dejar en memoria la
 # versión anterior de los módulos de jornada40 (pasó el 24-sep-2026: interfaz
@@ -49,7 +50,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
-VERSION_MODELO = "2026-09-24-agregado-por-area-b"
+VERSION_MODELO = "2026-09-25-determinista"
 _asegurar_modulos_al_dia(VERSION_MODELO)
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
@@ -146,29 +147,10 @@ def datos_semana(domingo: date) -> dict[str, pd.DataFrame]:
 @st.cache_data(show_spinner=False, max_entries=400)
 def calcular_semana_tienda(tienda_id: str, domingo: date, version_datos: int,
                            version_modelo: str = VERSION_MODELO) -> dict:
-    """Base (cómo se programa hoy) + propuesta del optimizador + techo, 1 tienda, 1 semana."""
-    anio = anio_regimen(domingo)
-    d = datos_semana(domingo)
-    tiendas_t = d["tiendas"].loc[d["tiendas"]["tienda_id"] == tienda_id]
-    plantilla_t = d["plantilla"].loc[d["plantilla"]["tienda_id"] == tienda_id]
-    trafico_t = d["trafico"].loc[d["trafico"]["tienda_id"] == tienda_id]
-    ventas_t = d["ventas"].loc[d["ventas"]["tienda_id"] == tienda_id]
-    ausentismo_t = d["ausentismo"].loc[d["ausentismo"]["empleado_id"].isin(set(plantilla_t["empleado_id"]))]
-
-    demanda = demanda_personal.marcar_franjas_pico(
-        demanda_personal.calcular_demanda_tienda(tienda_id, trafico_t, ventas_t, tiendas_t))
-    base = escenario_base.calcular_horario_base_tienda(
-        tienda_id, anio, plantilla_t, ausentismo_t, demanda, fecha_inicio=domingo)
-    propuesta = optimizador.resolver_tienda(
-        tienda_id, anio, plantilla_t, demanda, ausentismo_t,
-        tiempo_limite_seg=TIEMPO_LIMITE_SEG, fecha_inicio=domingo)
-    techo = optimizador.resolver_techo_teorico(
-        tienda_id, anio, plantilla_t, demanda, ausentismo_t,
-        tiempo_limite_seg=TIEMPO_LIMITE_SEG, fecha_inicio=domingo)
-    reporte = costos_ahorro.generar_reporte_cfo(tienda_id, base, propuesta, techo, anio)
-    reporte.update({"status": propuesta["status"], "propuesta": propuesta, "base": base,
-                    "demanda": demanda, "fecha_inicio": domingo, "anio": anio,
-                    "plantilla": plantilla_t, "ausentismo": ausentismo_t})
+    """Base (cómo se programa hoy) + propuesta del optimizador + techo, 1 tienda, 1 semana.
+    Con los datos de ejemplo usa la semana precalculada si viene en el repo."""
+    reporte, _, _ = semana_calc.calcular(tienda_id, domingo, datos_semana(domingo), TIEMPO_LIMITE_SEG,
+                                         version_modelo, usar_precalculado=(version_datos == 0))
     return reporte
 
 
@@ -201,7 +183,9 @@ def marcar_calculada(tienda_id: str, domingo: date) -> None:
 
 
 def esta_calculada(tienda_id: str, domingo: date) -> bool:
-    return (tienda_id, domingo, version_datos(), VERSION_MODELO) in registro_calculadas()
+    if (tienda_id, domingo, version_datos(), VERSION_MODELO) in registro_calculadas():
+        return True
+    return version_datos() == 0 and precalculado.cargar_existe(VERSION_MODELO, tienda_id, domingo)
 
 
 def version_datos() -> int:
@@ -236,6 +220,7 @@ def _cargar_estado_usuarios() -> tuple[dict[str, bool], dict[str, str]]:
 def _guardar_estado_usuarios(usuarios_df: pd.DataFrame) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     usuarios_df[["usuario", "activo", "email"]].to_csv(_RUTA_ESTADO_USUARIOS, index=False)
+    persistencia.subir(_RUTA_ESTADO_USUARIOS)
 
 
 def usuarios_con_estado() -> pd.DataFrame:
@@ -478,6 +463,13 @@ def pill_regimen(domingo: date) -> str:
 # Login
 # ---------------------------------------------------------------------------
 
+@st.cache_resource
+def _restaurar_datos() -> list[str]:
+    """Una vez por arranque: trae de GitHub el historial, avisos, cambios y cuentas."""
+    return persistencia.restaurar(DATA_DIR)
+
+
+_restaurar_datos()
 st.markdown(CSS, unsafe_allow_html=True)
 
 if "auth" not in st.session_state:
@@ -550,6 +542,7 @@ def guardar_ediciones(ed: dict) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         pd.DataFrame(filas, columns=["tienda_id", "semana", "empleado_id", "fecha", "turno"]).to_csv(
             DATA_DIR / "ediciones.csv", index=False)
+        persistencia.subir(DATA_DIR / "ediciones.csv")
     except Exception:
         pass
 

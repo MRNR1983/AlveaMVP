@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from jornada40 import persistencia
+
 __all__ = [
     "TIPOS_EVENTO", "registrar_evento", "cargar_auditoria", "visible_para",
 ]
@@ -71,6 +73,7 @@ def registrar_evento(
         }])
         ruta = _ruta_csv(data_dir)
         fila.to_csv(ruta, mode="a", header=not ruta.exists(), index=False)
+        persistencia.subir(ruta)
     except Exception:
         pass
 

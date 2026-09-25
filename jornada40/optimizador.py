@@ -77,7 +77,7 @@ def _slots_dia(hora_apertura: int, hora_cierre: int) -> list[int]:
 # intento: dos plantillas descansaban a la misma hora y esa hora quedaba
 # sin nadie que la pudiera cubrir -> INFEASIBLE sin importar la plantilla.)
 
-VERSION_MODELO = "2026-09-24-agregado-por-area-b"  # debe coincidir con app.VERSION_MODELO
+VERSION_MODELO = "2026-09-25-determinista"  # debe coincidir con app.VERSION_MODELO
 DURACION_TURNO_H = 8
 HORAS_EXTENSION = 2          # extensión opcional de un turno = tiempo extra (máx. 3 h/día, art. 66)
 MAX_DIAS_EXTENDIDOS = 3      # "ni más de tres veces en una semana" (art. 66)
@@ -223,9 +223,7 @@ def _modelo_agregado(ctx: dict, modo: str, pico_duro: bool, tiempo: float):
                     m.Add(ex >= cob - req - _MARGEN_SOBRESTAFFING)
                     penal.append(ex * _PESO_SOBRESTAFFING)
     m.Minimize(sum(costo) + sum(penal))
-    sv = cp_model.CpSolver()
-    sv.parameters.max_time_in_seconds = tiempo
-    sv.parameters.num_search_workers = 4
+    sv = _solver(tiempo)
     st = sv.Solve(m)
     nombre = sv.StatusName(st)
     if nombre not in ("OPTIMAL", "FEASIBLE"):
@@ -234,6 +232,23 @@ def _modelo_agregado(ctx: dict, modo: str, pico_duro: bool, tiempo: float):
     brecha = (abs(obj - bound) / abs(obj) * 100) if obj else 0.0
     return (nombre, {key: sv.Value(v) for key, v in n.items()},
             {key: {p: sv.Value(v) for p, v in cs.items()} for key, cs in c.items()}, brecha)
+
+
+def _solver(tiempo: float) -> cp_model.CpSolver:
+    """Solver reproducible: mismo dato -> mismo horario en cualquier corrida o
+    reinicio. Se limita por tiempo *determinista* (cuenta de trabajo del solver,
+    no reloj) y la búsqueda paralela se intercala en orden fijo."""
+    sv = cp_model.CpSolver()
+    p = sv.parameters
+    p.num_search_workers = SOLVER_WORKERS
+    p.interleave_search = True
+    p.random_seed = 42
+    p.max_deterministic_time = tiempo
+    p.max_time_in_seconds = tiempo * 6   # red de seguridad por si la máquina es lenta
+    return sv
+
+
+SOLVER_WORKERS = 4
 
 
 def _asignar_personas(ctx: dict, n_val: dict, c_val: dict) -> pd.DataFrame:
@@ -281,9 +296,7 @@ def _asignar_personas(ctx: dict, n_val: dict, c_val: dict) -> pd.DataFrame:
             m.Add(x >= h - tope)
             extra.append(x)
         m.Minimize(1000 * sum(falta) + sum(extra))
-        sv = cp_model.CpSolver()
-        sv.parameters.max_time_in_seconds = 5.0
-        sv.parameters.num_search_workers = 4
+        sv = _solver(5.0)
         if sv.Solve(m) not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             continue
         asignados: dict = {}

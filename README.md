@@ -84,9 +84,14 @@ jornada40/
   usuarios.py          Cuentas (SADMIN / ADMIN-Z1..Z5 / Man001..Man050)
   auditoria.py         Historial de acciones
   notificaciones.py    Avisos en la app + correo SMTP
+  semana.py            Cálculo completo de 1 tienda x 1 semana (lo usan la app y el precálculo)
+  precalculado.py      Lee/escribe semanas ya resueltas (carpeta precalculado/)
+  persistencia.py      Respaldo de los datos vivos en la rama datos-app de GitHub
   simulacros.py        (sin interfaz desde 24-sep-2026; se conserva con sus pruebas)
   tests/               pruebas unitarias (pytest)
 app.py                 Interfaz Streamlit
+scripts/precalcular.py Precalcula semanas de demo (50 tiendas) -> precalculado/<versión>/
+precalculado/          Semanas de demo ya resueltas (2026 y 2030): abren al instante
 docs/
   manual.md            Manual de uso de TODA la app + checklist de verificación
   tutoriales/          Un tutorial por rol (gerente, admin, sadmin) con capturas
@@ -188,11 +193,30 @@ texto del decreto y la LFT vigente.
 ## Nota de rendimiento
 
 Cada tienda-semana es un modelo CP-SAT de ~80 personas × 7 días × 4
-turnos (unos 2,200 booleanos): tarda de 1 a 25 s según la tienda. En
-Resumen, calcular las 50 tiendas de una semana toma varios minutos; el
-resultado queda en caché, así que abrir después cualquiera de esas
-tiendas es instantáneo. Recomendación: calcular la semana de la demo
-antes de la llamada.
+turnos. El solver es **determinista** (límite de tiempo por trabajo del
+solver, no por reloj, y búsqueda paralela en orden fijo): los mismos datos
+dan el mismo horario en cualquier corrida o reinicio.
+
+Las semanas de la demo (esta semana y las 2 siguientes, en 2026 y 2030, más
+la semana a la que lleva el salto a 2027–2029) vienen **precalculadas** en
+`precalculado/` para las 50 tiendas: abren al instante, también el Resumen
+de la red. Cualquier otra semana se calcula al abrirla (~25 s por tienda) y
+queda en caché. Para agregar semanas: `python scripts/precalcular.py
+AAAA-MM-DD ...` (domingos) y subir la carpeta. Si cambia el modelo, se sube
+`VERSION_MODELO` y se vuelve a precalcular.
+
+## Datos que sobreviven reinicios
+
+Streamlit Cloud borra el disco al reiniciar. Historial, avisos, cambios de
+turno y estado de las cuentas se respaldan en la rama `datos-app` del repo y
+se restauran al arrancar. Se activa con un secreto en Streamlit Cloud
+(Settings → Secrets):
+
+```toml
+github_token = "github_pat_..."   # fine-grained: solo este repo, Contents: Read and write
+```
+
+Sin el secreto la app funciona igual, solo sin respaldo.
 
 ## Cómo correr las pruebas
 
