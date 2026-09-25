@@ -1,6 +1,6 @@
 # Tutorial · Gerente de tienda
 
-**Tu trabajo en Alvea:** revisar el horario de tu tienda, hacer los cambios del día y saber cuánto ahorras.
+**Tu trabajo en Alvea:** revisar el horario de tu tienda, hacer los cambios del día y saber cuánto ahorras. Tienes dos páginas: **Horario** y **Avisos**.
 Solo ves tu tienda. Usuario: `Man001` … `Man050` (Man001 = tienda T001).
 
 ---
@@ -13,19 +13,23 @@ Escribe tu usuario y la contraseña → **Entrar**.
 
 ## 2. Mira la semana
 
-Abres en **Horario → Semana**. Arriba, lo que importa:
+Abres en **Horario → Semana**. Arriba, tres cifras:
 
-- **Ahorro de la semana** contra el **rol fijo de hoy** (lo que costaría la semana como se programa hoy).
-- **Horas extra** (con Alvea vs. rol fijo) y **Horas pico sin cubrir** (debe estar en 0).
+- **Ahorro de la semana**, con las dos bases: lo que cuesta el rol fijo de hoy → lo que cuesta con Alvea.
+- **Hora pico**: *Cubierta* o cuántas horas falta gente.
+- **Horas extra** con Alvea, y cuántas serían con el rol fijo.
 
-Cada día muestra cuántas personas van en cada turno, el ahorro del día y el costo del rol fijo.
-**Hoy** te regresa a la semana actual; **‹ ›** cambian de semana. Toca **Jornada 48 h · 2026** para saltar a otro año de la reforma (hasta 40 h en 2030).
+Cada día muestra cuántas personas van en cada turno y su ahorro. **Hoy** te regresa a la semana actual; **‹ ›** cambian de semana. Toca **Jornada 48 h · 2026** para saltar a otro año de la reforma (hasta 40 h en 2030).
+
+Abajo: **Horario (CSV)** para imprimir o subir a nómina, **Reporte (TXT)** para mandar por correo y, plegado, **De dónde sale el ahorro** (horas extra evitadas y gente de más evitada, en pesos).
 
 ![Semana](img/g02_semana.png)
 
+![De dónde sale el ahorro](img/g10_mi_tienda.png)
+
 ## 3. Abre el día
 
-Toca **Día**. Ves quién trabaja en cada uno de los 4 turnos, la hora de descanso de cada persona y quién hace **+2 h**.
+Toca **Día**. Arriba: ahorro del día, cuántos trabajan (y cuántos descansan o faltan) y si la hora pico está cubierta. Abajo, quién trabaja en cada uno de los 4 turnos, su hora de descanso y quién hace **+2 h**.
 El color del punto es el área: cajas, piso, perecederos, almacén.
 
 ![Día](img/g03_dia.png)
@@ -48,7 +52,7 @@ El color del punto es el área: cajas, piso, perecederos, almacén.
 
    ![Calificación](img/g07_calificacion.png)
 
-La gráfica de cobertura marca en naranja las horas donde falta gente.
+Si falta gente, se abre sola la gráfica **Cobertura por hora**, con la hora en naranja.
 
 ![Cobertura](img/g08_cobertura.png)
 
@@ -58,16 +62,9 @@ La gráfica de cobertura marca en naranja las horas donde falta gente.
 
 ![Mes](img/g09_mes.png)
 
-## 6. Mi tienda: cuánto ahorras
+## 6. Avisos y salida
 
-Costo de la semana con Alvea contra el rol fijo, de dónde sale el ahorro (horas extra evitadas y sobrestaffing evitado) y si cumples la meta de 8%.
-
-![Mi tienda](img/g10_mi_tienda.png)
-
-## 7. Descarga, avisos y salida
-
-- **Horario (CSV)** para imprimir o subir a nómina; **Reporte (TXT)** para mandar por correo.
 - **Avisos**: lo que necesita tu atención.
 - **Mi correo**: a dónde te llegan los avisos. **Privacidad y términos**: qué datos guarda Alvea. **Cerrar sesión** al terminar.
 
-![Descargas y salida](img/g11_descargas.png)
+![Avisos y salida](img/g11_descargas.png)

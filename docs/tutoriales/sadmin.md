@@ -37,7 +37,7 @@ Cómo baja la jornada de 2026 a 2030, los topes de horas extra y la regla que fa
 
 1. Descarga el formato de cada archivo.
 2. Súbelo lleno con **Elegir CSV**.
-3. **Usar mis archivos**: Alvea recalcula todo sola.
+3. **Usar mis archivos**: Alvea recalcula todo sola. Puedes agregar tiendas nuevas (una fila en Tiendas y su gente en Plantilla); aparecen en el selector y en el Resumen. Los archivos aplican a tu sesión.
 
 Abajo dice qué datos están en uso.
 

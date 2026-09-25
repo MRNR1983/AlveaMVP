@@ -8,170 +8,20 @@ rol fijo con el que se programa hoy.
 App en línea: https://alveamvp.streamlit.app · Contraseña de todas las
 cuentas: `3.14159265358`
 
----
+## 1. Cómo se usa: un tutorial por rol
 
-## 1. Entrar
+| Rol | Usuario | Páginas | Tutorial |
+| --- | --- | --- | --- |
+| Gerente de tienda | `Man001` … `Man050` | Horario · Avisos | [gerente.md](tutoriales/gerente.md) |
+| Admin de zona | `ADMIN-Z1` … `ADMIN-Z5` | Resumen · Horario · Avisos · Usuarios | [admin.md](tutoriales/admin.md) |
+| Super Admin (HQ) | `SADMIN` | Lo mismo para las 50 tiendas + Ver como · Reglas legales · Datos | [sadmin.md](tutoriales/sadmin.md) |
 
-| Usuario | Quién es | Qué ve |
-| --- | --- | --- |
-| `Man001` … `Man050` | Gerente de una tienda | Horario, Mi tienda, Avisos |
-| `ADMIN-Z1` … `ADMIN-Z5` | Admin de zona (CDMX, Occidente, Noreste, Centro, Sureste) | Resumen, Horario (solo lectura), Tienda, Avisos, Historial, Usuarios — solo de su zona |
-| `SADMIN` | HQ | Todo lo anterior para las 50 tiendas + Reglas legales, Datos y "Ver como" |
+Cada página tiene un solo trabajo: **Horario** es la operación y el dinero de
+una tienda (semana, día, mes, descargas y de dónde sale el ahorro);
+**Resumen** es la zona o la red; **Avisos** es lo que requiere atención y el
+historial; **Usuarios** es quién entra. Solo el gerente cambia turnos.
 
-Escribe usuario y contraseña → **Entrar**. Si la cuenta fue desactivada,
-el login lo dice y no deja pasar (en cualquier sesión, al instante).
-
-## 2. El menú lateral
-
-- **Arriba**: la navegación de tu rol. La página activa queda resaltada.
-  "Avisos · 3" indica avisos sin leer.
-- **Abajo**: tu nombre y alcance, **Mi correo** (el correo al que te
-  llegan avisos urgentes; se guarda para todas tus sesiones) y **Cerrar
-  sesión**.
-- **Ver como** (solo SADMIN, arriba del menú): muestra la app como la
-  vería una zona o una tienda. Solo cambia lo que ves; tus permisos siguen
-  siendo de HQ.
-
-## 3. Una sola semana activa
-
-**Cada vista tiene un solo trabajo**: Horario es operación (quién trabaja y
-si alcanza la gente), Mi tienda / Tienda es dinero de una tienda, Resumen
-es dinero de la zona o la red. **Solo el gerente mueve turnos**; admin y HQ
-ven el horario en modo lectura (HQ puede usar "Ver como" una tienda).
-
-Todas las páginas comparten la misma semana. Arranca en **la semana de
-hoy** y se mueve con la barra de fechas:
-
-`Hoy` · `‹` · `›` · título de la fecha · etiqueta **Jornada 48 h · 2026**
-
-- **Hoy** regresa a la fecha actual desde cualquier vista.
-- `‹` `›` avanzan un mes, una semana o un día según la vista.
-- No se puede ir antes de la semana de hoy ni después de diciembre de 2030.
-- La etiqueta azul dice qué jornada legal aplica a esa semana. Cambia
-  sola: 48 h (2026), 46 (2027), 44 (2028), 42 (2029), 40 (2030). Si la
-  semana cruza de año, aplica el tope del año nuevo (el más estricto).
-
-## 4. Horario
-
-Tres vistas, con el selector **Mes / Semana / Día** a la derecha. Admin y
-SADMIN eligen la tienda en el selector de arriba a la derecha.
-
-### Mes
-Cuadrícula del mes. El día de hoy tiene borde azul; los días pasados se
-ven en gris y no se pueden abrir. Un punto verde marca las semanas que ya
-abriste (quedan en memoria y se abren al instante). **Toca un día** para ir
-directo a su vista Día.
-
-### Semana
-Al abrirla se calcula (unos segundos la primera vez). Arriba, cuatro cifras de
-operación (el dinero está en Mi tienda):
-
-| Cifra | Qué significa |
-| --- | --- |
-| **Ahorro de la semana** | Pesos y % frente al rol fijo de hoy |
-| Rol fijo de hoy / Con Alvea | Costo de la semana de cada forma de programar |
-| Horas extra | Las que usa Alvea, y las del rol fijo para comparar |
-| Horas pico sin cubrir | Horas-persona que faltan en las horas más cargadas. 0 = cobertura completa |
-
-Debajo, los 7 días: cada uno con sus 4 turnos, personas, ahorro del día y
-costo del rol fijo (los 7 días suman exacto el total de la semana). **Toca el nombre del día** para abrirlo.
-
-### Día
-- Cuatro cifras: personas trabajando, horas programadas (incluye 1 h de
-  descanso pagado por persona), quién descansa y faltas previstas.
-- **Cambiar a alguien de turno** (solo gerente; está arriba, junto a su
-  resultado): elige a la persona (se puede buscar
-  escribiendo su nombre; al lado ves su turno actual) → elige el nuevo
-  turno o **Descanso**: se aplica en ese momento (hay **Deshacer**). El cambio
-  queda guardado y lo ve también el admin de zona.
-  - Si el cambio rompe la ley (7 días seguidos o más horas que el máximo
-    legal con extras), no se aplica y te dice por qué.
-  - Si es legal, se aplica, la persona queda marcada en amarillo y arriba
-    aparece la calificación: **Neutral** (no cambia costo ni cobertura),
-    **Aceptable/Caro** (sube el costo), **Costoso** (manda a alguien a
-    horas triples) o **No recomendado** (deja una hora pico sin cubrir).
-  - **Deshacer** revierte el último cambio.
-  - Si la calificación es Caro, Costoso o No recomendado, el admin de la
-    zona recibe un aviso que dice qué tienda, qué día, a quién se movió y por qué.
-- **Cuatro columnas, una por turno**: color, nombre, horario, ventana de
-  descansos y cuántas personas; debajo, cada nombre con su área (Cajas,
-  Piso, Perecederos, Almacén) y la hora de su descanso. Los descansos
-  están escalonados dentro del turno para que nunca se vacíe de golpe.
-- **Cobertura por hora**: barras = personas trabajando (sin contar a
-  quien está en su descanso); línea punteada = personas necesarias. Pasa
-  el cursor para ver los números.
-
-## 5. Mi tienda (Tienda para admin/HQ)
-
-Para la semana activa: ahorro, costo con Alvea, costo con el rol fijo,
-horas extra evitadas y qué parte del ahorro máximo teórico se captura; un
-mensaje de si **cumple la meta de 8%**, y la tabla
-**De dónde sale el ahorro** (horas ordinarias, extras dobles y triples, y
-costo, antes vs. con Alvea).
-
-Descargas: **Horario (CSV)** — una fila por persona y día con turno,
-horario y descanso, ya con los cambios manuales — y **Reporte (TXT)** para
-el CFO. **Cómo se calcula** explica el método y los supuestos.
-
-## 6. Resumen (admin y HQ)
-
-Ahorro de la semana activa en tu zona (admin) o en la red (HQ).
-
-1. Si faltan tiendas por calcular, **Calcular N tiendas** las calcula con
-   barra de progreso (cada tienda tarda unos segundos; las 50 toman varios
-   minutos). Lo calculado queda en el servidor y aparece al instante para
-   cualquier usuario (lo que HQ prepare antes de la demo, todos lo ven).
-2. Cifras: ahorro total, tiendas en meta (≥ 8%) y tiendas sin horario legal.
-3. **Ahorro por tienda**: barras azules = en meta, naranjas = debajo de
-   8%; la línea punteada es la meta. **Ver tabla** muestra el detalle.
-
-## 7. Avisos
-
-Se generan solos. Un aviso nuevo se ve en **negritas**; **Leído** lo
-marca, y **Marcar N como leídos** los marca todos. Qué genera avisos:
-
-| Evento | Quién lo recibe | Severidad |
-| --- | --- | --- |
-| Cambio manual calificado Caro/Costoso | Admin de la zona | Advertencia |
-| Cambio manual No recomendado | Admin de la zona | Crítico |
-| Cuenta desactivada / reactivada | El gerente de esa cuenta (y por correo si tiene) | Crítico / Info |
-
-Los críticos también se mandan por correo cuando la cuenta tiene correo y
-el servidor SMTP está configurado (Secrets de Streamlit Cloud).
-
-## 8. Historial (admin y HQ)
-
-Quién hizo qué y cuándo, dentro de tu alcance (el admin ve también lo que
-hicieron los gerentes de su zona): inicios y cierres de
-sesión, cambios de turno y su calificación, cálculos del Resumen, cuentas
-activadas o desactivadas, correo actualizado y datos cargados. Filtra por
-**Qué** y **Quién**; **Descargar (CSV)** exporta lo filtrado.
-
-## 9. Usuarios (admin y HQ)
-
-Una fila por tienda: usuario, tienda, **Activo** y **Correo**. Edita en la
-tabla y pulsa **Guardar N cambio(s)**. Desactivar una cuenta la saca en
-ese momento de cualquier sesión abierta y le avisa. Abajo se listan las
-tiendas que quedaron sin acceso. Un admin solo ve las tiendas de su zona.
-
-## 10. Reglas legales (HQ)
-
-Tabla año por año (desde el año actual hasta 2030): jornada semanal, topes
-de horas extra dobles y triples, y días máximos seguidos. Abajo, cuántas
-reglas faltan de validar con un abogado laboral y la trazabilidad completa
-contra el Decreto DOF 01-05-2026.
-
-## 11. Datos (HQ)
-
-1. **Descarga el formato** de cada archivo (tiendas, plantilla, tráfico
-   por hora, ventas por hora, ausentismo).
-2. **Sube tus archivos** en el mismo formato → **Usar mis archivos**.
-   Lo que no subas se sigue tomando del ejemplo. **Volver al ejemplo**
-   descarta lo subido.
-
----
-
-## Cómo se calcula
+## 2. Cómo se calcula
 
 - **Rol fijo de hoy (base)**: 80 personas en 3 turnos rotativos fijos;
   donde falta gente se alarga el turno con horas extra.
@@ -210,31 +60,27 @@ horas extra. En 2030 (40 h) baja a 21.7%: menos horas ordinarias por persona
 encarecen la semana, pero las 50 tiendas siguen arriba de 8% y con el pico
 cubierto — el efecto de la reforma que el CFO necesita ver.
 
-## Límites conocidos (honestos)
+## 3. Límites conocidos
 
 - Turnos nocturnos/mixtos (7 y 7.5 h) no se modelan; todos son de 8 h.
-- Los cambios manuales viven en la sesión del navegador (no se guardan
-  para otras personas); el historial sí queda registrado.
+- Los archivos que HQ sube en **Datos** aplican a su sesión; los demás
+  usuarios siguen viendo los datos de ejemplo.
+- Sin el secreto `github_token` en Streamlit Cloud, historial, avisos y
+  cambios de turno se pierden si la app se reinicia (ver README).
+- Una semana no precalculada tarda ~25 s por tienda la primera vez.
 - Si una semana no tiene forma de cubrir todo el pico con la plantilla,
-  el optimizador entrega el mejor horario posible y lo reporta en **Horas
-  pico sin cubrir** en lugar de fallar.
-- Simulacros y préstamo de personal entre tiendas se quitaron de la
-  interfaz para mantenerla enfocada; el código y sus pruebas siguen en
-  `simulacros.py`.
+  el optimizador entrega el mejor horario posible y lo reporta en **Hora
+  pico** en lugar de fallar.
+- El tramo de horas extra al triple (art. 68) está pendiente de
+  validación legal.
 
----
-
-## Checklist de verificación (lo que se probó)
-
-Pruebas de navegador de punta a punta (Chromium, clic por clic, sin
-excepciones) sobre el mismo código que corre en línea:
+## 4. Lo que se probó (navegador, clic por clic)
 
 | Rol | Qué se probó | Resultado |
 | --- | --- | --- |
-| Gerente | Login; Semana con cifras de operación (sin dinero); ›, Hoy; Día; cambio de turno con calificación y Deshacer; día siguiente; Mes, mes siguiente y clic en 15-oct abre ese día; Mi tienda con cifras de dinero; descarga de Horario (CSV) y Reporte (TXT); Avisos; Mi correo; Cerrar sesión | OK |
-| Gerente | Cambio ilegal (7.º día) bloqueado con el motivo (art. 69) | OK |
-| Admin CDMX | Resumen: calcular 12 tiendas, gráfica y tabla; Horario Día en solo lectura; Tienda con selector; aviso del cambio "No recomendado" del gerente; Historial con las acciones de los gerentes de la zona; Usuarios: desactivar Man001 → su login se bloquea → reactivar → vuelve a entrar | OK |
-| Super Admin | Reglas legales 2026–2030; Datos: descargar formato, subir un CSV, usarlo y volver al ejemplo; Ver como tienda (menú de gerente) y zona; Resumen de las 50 tiendas (22.8% de ahorro, 50 de 50 en meta) | OK |
-| Celular (390 px) | Menú cerrado al entrar; barra de fechas en una fila; cifras en 2 columnas | OK |
-| Automáticas | 96 pruebas unitarias (`pytest jornada40/tests`) | Pasan |
-| Lógica | Régimen por fecha: semana 27-dic-2026 → 46 h (2027), 2029 → 42 h, 2030 → 40 h | OK |
+| Gerente | Login; Semana (3 cifras, descargas, de dónde sale el ahorro); salto a 2030; Día; cambio de turno en 2 pasos con calificación "No recomendado" y Deshacer; gráfica de cobertura que se abre sola; Mes; Avisos; Mi correo con validación; Privacidad y términos; Cerrar sesión | OK |
+| Gerente | Cambio ilegal (7.º día) bloqueado con el motivo; 5 contraseñas malas = bloqueo de 5 min | OK |
+| Admin CDMX | Resumen de su zona; aviso del cambio del gerente con **Ver día** (ve el cambio guardado); historial; Usuarios | OK |
+| Super Admin | Resumen de 50 tiendas 2026 y 2030 al instante (precalculadas); Ver como; Reglas legales; Datos con una tienda nueva (T051) y +40% de tráfico: se recalcula y T051 aparece con horario legal y pico cubierto | OK |
+| Celular (390 px) | Sin scroll horizontal; cifras en 2 columnas | OK |
+| Automáticas | 99 pruebas (`pytest jornada40/tests`), incluidas solver determinista, calificación por área y respaldo en GitHub simulado | Pasan |

@@ -63,9 +63,8 @@ streamlit run app.py
 
 | | |
 | --- | --- |
-| ![Login](docs/capturas/01_login.png) | ![Semana](docs/capturas/02_horario_semana.png) |
-| ![Mes](docs/capturas/03_horario_mes.png) | ![Día](docs/capturas/04_horario_dia.png) |
-| ![Mi tienda](docs/capturas/05_mi_tienda.png) | ![Resumen](docs/capturas/06_resumen_zona.png) |
+| ![Semana](docs/tutoriales/img/g02_semana.png) | ![Día](docs/tutoriales/img/g07_calificacion.png) |
+| ![Mes](docs/tutoriales/img/g09_mes.png) | ![Resumen de la red](docs/tutoriales/img/s01_resumen_red.png) |
 
 Comparación punto por punto contra el PDF del reto: [`docs/comparacion_pdf.md`](docs/comparacion_pdf.md).
 
@@ -93,7 +92,7 @@ app.py                 Interfaz Streamlit
 scripts/precalcular.py Precalcula semanas de demo (50 tiendas) -> precalculado/<versión>/
 precalculado/          Semanas de demo ya resueltas (2026 y 2030): abren al instante
 docs/
-  manual.md            Manual de uso de TODA la app + checklist de verificación
+  manual.md            Cómo se calcula, límites y lo que se probó (el uso está en tutoriales/)
   tutoriales/          Un tutorial por rol (gerente, admin, sadmin) con capturas
   guion_demo.md        Guion de 45 min para la demo
   registro_agentic.md  Registro de uso de herramientas agénticas
@@ -101,9 +100,9 @@ docs/
 
 ## Cómo funciona (resumen)
 
-- **Menú por rol.** Gerente: Horario, Mi tienda, Avisos. Admin de zona:
-  Resumen, Horario, Tienda, Avisos, Historial, Usuarios. Super Admin:
-  lo mismo + Reglas legales, Datos y "Ver como".
+- **Menú por rol.** Gerente: Horario, Avisos. Admin de zona: Resumen,
+  Horario, Avisos (con historial), Usuarios. Super Admin: lo mismo +
+  Reglas legales, Datos y "Ver como".
 - **El horario empieza hoy y llega a diciembre de 2030.** El régimen
   legal sale solo de la fecha de cada semana (48 h en 2026, 46 en 2027,
   44 en 2028, 42 en 2029, 40 en 2030). Si una semana cruza de año, aplica
@@ -112,9 +111,9 @@ docs/
   Intermedio, Refuerzo pico, Cierre). El optimizador decide quién entra a
   cuál turno cada día (o descansa) y a qué hora toma cada quien su
   descanso (4.ª–6.ª hora), para que ningún turno se vacíe en hora pico.
-- **Un rol por vista.** Horario = operación; Mi tienda / Resumen = dinero.
+- **Un rol por vista.** Horario = operación y dinero de una tienda; Resumen = zona o red.
   Solo el gerente cambia turnos; admin y HQ ven el horario en lectura.
-- **Se calcula al abrir.** Abrir una semana (en Horario o Mi tienda) la
+- **Se calcula al abrir.** Abrir una semana en Horario la
   calcula; no hay botón escondido. Los datos de cada semana se generan
   bajo demanda y son reproducibles.
 - **Cambios manuales.** En la vista Día: persona -> nuevo turno (se
@@ -122,7 +121,7 @@ docs/
   máximo legal) y si no, se califica contra el óptimo (costo y cobertura
   en pico). Se puede deshacer.
 
-Detalle completo en [`docs/manual.md`](docs/manual.md).
+Método, límites y pruebas en [`docs/manual.md`](docs/manual.md).
 
 **Tutoriales por rol** (con capturas de la app en línea): [Gerente](docs/tutoriales/gerente.md) · [Admin de zona](docs/tutoriales/admin.md) · [Super Admin](docs/tutoriales/sadmin.md).
 

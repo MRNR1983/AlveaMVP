@@ -9,16 +9,16 @@ estas cifras son las mismas en la app en línea y en cualquier reinicio.
 | --- | --- | --- |
 | Herramienta funcional que, con datos operativos de una tienda (tráfico, ventas, plantilla, turnos), genere la programación semanal | Horario semanal por tienda: 4 turnos fijos, cada persona asignada día por día | Cumple |
 | a. Tope de 40 horas por empleado | El tope sale de la fecha de la semana: 48 h en 2026 → 40 h en 2030 (reducción escalonada del Decreto DOF 01-05-2026). La semana de 2030 opera a 40 h | Cumple (con la gradualidad de la ley; para mostrar 40 h en la demo, tocar la etiqueta "Jornada 48 h · 2026" y elegir 2030) |
-| b. Cuantificar en MXN el costo evitado frente a la programación actual | "Rol fijo de hoy" contra "Con Alvea" en Horario (semana y día), Mi tienda y Resumen | Cumple |
+| b. Cuantificar en MXN el costo evitado frente a la programación actual | "Rol fijo de hoy" contra "Con Alvea" en Horario (semana, día y su desglose) y Resumen | Cumple |
 | ~50 tiendas, ~80 FTE por tienda, domingo a domingo | 50 tiendas × 80 personas; semana domingo–sábado | Cumple |
-| Demostrar al menos 8% de ahorro en costo laboral total (horas extra y sobrestaffing evitados) | 2026: **29.0% en la red ($1,889,625), 50 de 50 tiendas ≥ 8%** (mínimo 22.9%). 2030: **21.7% ($1,519,383), 50 de 50 ≥ 8%** (mínimo 14.9%). Mi tienda desglosa horas extra evitadas y sobrestaffing evitado | Cumple |
+| Demostrar al menos 8% de ahorro en costo laboral total (horas extra y sobrestaffing evitados) | 2026: **29.0% en la red ($1,889,625), 50 de 50 tiendas ≥ 8%** (mínimo 22.9%). 2030: **21.7% ($1,519,383), 50 de 50 ≥ 8%** (mínimo 14.9%). Horario → "De dónde sale el ahorro" desglosa horas extra evitadas y gente de más evitada | Cumple |
 | Sin caer en subdotación en horas pico | Cobertura pico como restricción dura, contada por área. **0 horas pico sin cubrir en las 50 tiendas, en 2026 y en 2030** | Cumple |
 | Datos definidos por el candidato (sintéticos o públicos) | Datos sintéticos con marca ficticia, calibrados (quincena, Buen Fin, Navidad, regreso a clases) | Cumple |
 | Automatizada: cualquiera del equipo la corre con datos de una tienda nueva sin operación manual | Página Datos: descargar formato → subir CSV → la app recalcula sola | Cumple (hoy la página Datos es solo para HQ) |
 | Stack y formato libres ("lo que llevarías a un cliente el lunes") | App web en línea (Streamlit), roles por usuario, descargas CSV/TXT | Cumple |
 | Trazabilidad de restricciones | Página Reglas legales: tabla año por año y trazabilidad de cada regla contra el Decreto, con lo pendiente de validar | Cumple |
 | Entregable 1 — herramienta funcionando, accesible, reproducible, de extremo a extremo sin el candidato | alveamvp.streamlit.app + credenciales en README + repo público | Cumple |
-| Entregable 2 — evidencia del proceso: repo, documentación, capturas, supuestos, decisiones, nota de trazabilidad, registro de herramientas agénticas | README, docs/manual.md, docs/capturas/, docs/registro_agentic.md, Reglas legales | Cumple |
+| Entregable 2 — evidencia del proceso: repo, documentación, capturas, supuestos, decisiones, nota de trazabilidad, registro de herramientas agénticas | README, docs/tutoriales/ (con capturas), docs/manual.md, docs/registro_agentic.md, Reglas legales | Cumple |
 | Entregable 3 — demo de 45 min con CFO/COO | docs/guion_demo.md | Listo |
 
 ## Riesgos que conviene decir en la demo

@@ -249,8 +249,13 @@ def registrar(tipo: str, detalle: str = "", alcance: tuple[str, str | None] | No
     auditoria.registrar_evento(DATA_DIR, a["usuario"], a["rol"], tipo_alc, valor_alc, tipo, detalle=detalle)
 
 
+def tiendas_actuales() -> pd.DataFrame:
+    """Catálogo de tiendas vigente: el que subió HQ en Datos, o el de ejemplo."""
+    return st.session_state.get("datos_subidos", {}).get("tiendas", datos_fijos()["tiendas"])
+
+
 def tiendas_visibles(auth_: dict) -> pd.DataFrame:
-    tiendas = datos_fijos()["tiendas"]
+    tiendas = tiendas_actuales()
     if auth_["rol"] == "manager":
         return tiendas[tiendas["tienda_id"] == auth_["tienda_id"]]
     if auth_["rol"] == "admin":
@@ -509,7 +514,7 @@ if _fila_actual is None or not _fila_actual["activo"]:
     st.error("Esta cuenta fue desactivada. Pide a HQ que la reactive.")
     st.stop()
 
-tiendas_df = datos_fijos()["tiendas"]
+tiendas_df = tiendas_actuales()
 
 # ---------------------------------------------------------------------------
 # Estado compartido: semana activa, vista del calendario
@@ -575,8 +580,8 @@ def dialogo_legal() -> None:
 
 
 PAGINAS = {  # etiqueta -> ícono
-    "Resumen": "insights", "Horario": "calendar_month", "Tienda": "storefront",
-    "Avisos": "notifications", "Historial": "history", "Usuarios": "group",
+    "Resumen": "insights", "Horario": "calendar_month",
+    "Avisos": "notifications", "Usuarios": "group",
     "Reglas legales": "gavel", "Datos": "upload_file",
 }
 
@@ -596,9 +601,9 @@ with st.sidebar:
             auth = {**auth_real, "rol": "manager", "tienda_id": ver_como[7:]}
 
     if auth["rol"] == "manager":
-        grupos = {"": ["Horario", "Tienda", "Avisos"]}
+        grupos = {"": ["Horario", "Avisos"]}
     else:
-        grupos = {"Operación": ["Resumen", "Horario", "Tienda"], "Control": ["Avisos", "Historial", "Usuarios"]}
+        grupos = {"": ["Resumen", "Horario", "Avisos", "Usuarios"]}
         if auth_real["rol"] == "super_admin":
             grupos["HQ"] = ["Reglas legales", "Datos"]
     paginas = [p for ps in grupos.values() for p in ps]
@@ -611,7 +616,7 @@ with st.sidebar:
         if grupo:
             st.markdown(f"<div class='sb-grupo'>{grupo}</div>", unsafe_allow_html=True)
         for p in ps:
-            etiqueta = "Mi tienda" if (p == "Tienda" and auth["rol"] == "manager") else p
+            etiqueta = p
             if p == "Avisos" and n_avisos:
                 etiqueta = f"Avisos · {n_avisos}"
             if st.button(etiqueta, key=f"nav_{p.replace(' ', '_')}", icon=f":material/{PAGINAS[p]}:",
@@ -926,38 +931,77 @@ def horas_extra_vigentes(rep: dict, turnos: pd.DataFrame) -> int:
     return int((h - tope).clip(lower=0).sum())
 
 
+def tile_pico(horas: int, cuando: str = "") -> tuple:
+    return ("Hora pico", "Cubierta" if not horas else f"Faltan {horas} h",
+            f"todas las áreas{cuando}" if not horas else f"falta gente de alguna área{cuando}", "bien" if not horas else "mal")
+
+
 def tiles_semana(rep: dict, turnos: pd.DataFrame, rd: pd.DataFrame) -> None:
-    """Beneficio arriba (ahorro vs. rol fijo de hoy) y la operación que lo respalda."""
+    """3 cifras: cuánto ahorras (con las dos bases), si el pico está cubierto y las horas extra."""
     base, alvea = rd["base"].sum(), rd["alvea"].sum()
     ahorro = base - alvea
     extra = horas_extra_vigentes(rep, turnos)
     b = rep["base"]
     extra_base = int(b.get("horas_extra_doble_totales", 0) + b.get("horas_extra_triple_totales", 0))
-    sin_cubrir = int(rd["pico_sin"].sum())
     tiles([
-        ("Ahorro de la semana", mxn(ahorro), f"{ahorro / base:.1%} menos que el rol fijo" if base else "", "", True),
-        ("Rol fijo de hoy", mxn(base), "costo de la semana"),
-        ("Con Alvea", mxn(alvea), "costo de la semana"),
-        ("Horas extra", f"{extra:,}", f"rol fijo: {extra_base:,}", "ojo" if extra else ""),
-        ("Horas pico sin cubrir", f"{sin_cubrir:,}", "por área" if sin_cubrir else "cobertura completa",
-         "mal" if sin_cubrir else "bien"),
+        ("Ahorro de la semana", mxn(ahorro),
+         (f"{ahorro / base:.1%} · rol fijo {mxn(base)} → Alvea {mxn(alvea)}" if base else ""), "", True),
+        tile_pico(int(rd["pico_sin"].sum())),
+        ("Horas extra", f"{extra:,}", f"con el rol fijo serían {extra_base:,}", "ojo" if extra else "bien"),
     ])
 
 
-def tiles_dinero(rep: dict) -> None:
-    """Mi tienda = dinero de la semana, desglosado como lo pide el reto:
-    horas extra evitadas y sobrestaffing evitado."""
-    ah = rep["ahorro_semanal"]
-    tiles([
-        ("Ahorro de la semana", mxn(ah["ahorro_total_mxn"]), f"{ah['ahorro_pct']:.1%} vs. el rol fijo de hoy",
-         "", True),
-        ("Rol fijo de hoy", mxn(ah["costo_base_mxn"]), "costo de la semana"),
-        ("Con Alvea", mxn(ah["costo_propuesta_mxn"]), "costo de la semana"),
-        ("Horas extra evitadas", mxn(ah["costo_extra_evitado_mxn"]),
-         f"{ah['horas_extra_doble_evitadas'] + ah['horas_extra_triple_evitadas']:,.0f} h"),
-        ("Sobrestaffing evitado", mxn(ah["costo_sobrestaffing_evitado_mxn"]),
-         f"{ah['horas_sobrestaffing_evitadas']:,.0f} h de gente de más"),
-    ])
+def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame) -> None:
+    """Debajo de la semana: descargas y, plegado, de dónde sale el ahorro (antes página 'Mi tienda')."""
+    ah, br = rep["ahorro_semanal"], rep["brecha_vs_techo"]
+    plantilla = rep["plantilla"]
+    export = turnos.merge(plantilla[["empleado_id", "nombre", "rol"]], on="empleado_id", how="left") \
+        .sort_values(["fecha", "hora_inicio", "nombre"])[
+        ["fecha", "turno", "hora_inicio", "hora_fin", "hora_pausa", "empleado_id", "nombre", "rol"]]
+    export["rol"] = export["rol"].map(ROL_ETIQUETA).fillna(export["rol"])
+    export.columns = ["Fecha", "Turno", "Entra", "Sale", "Descanso", "ID", "Nombre", "Área"]
+    reporte_txt = (
+        f"Alvea — Tienda {tienda_id}\nSemana {fmt_rango_semana(semana)} · jornada {horas_regimen(semana)} h "
+        f"({anio_regimen(semana)})\n\n{rep['resumen_ejecutivo']}\n\n"
+        f"Costo rol fijo de hoy: {mxn(ah['costo_base_mxn'])} MXN\nCosto con Alvea: {mxn(ah['costo_propuesta_mxn'])} MXN\n"
+        f"Ahorro: {mxn(ah['ahorro_total_mxn'])} MXN ({ah['ahorro_pct']:.1%})\n"
+        f"  por horas extra evitadas: {mxn(ah['costo_extra_evitado_mxn'])} MXN\n"
+        f"  por gente de más evitada: {mxn(ah['costo_sobrestaffing_evitado_mxn'])} MXN\n"
+        f"Captura del ahorro máximo teórico: {br.get('pct_del_techo_capturado', 0):.0%}\n")
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    d1, d2, _ = st.columns([1, 1, 2])
+    d1.download_button("Horario (CSV)", export.to_csv(index=False).encode("utf-8"),
+                       f"horario_{tienda_id}_{semana.isoformat()}.csv", "text/csv",
+                       icon=":material/download:", width="stretch")
+    d2.download_button("Reporte (TXT)", reporte_txt.encode("utf-8"),
+                       f"reporte_{tienda_id}_{semana.isoformat()}.txt", "text/plain",
+                       icon=":material/download:", width="stretch")
+    with st.expander("De dónde sale el ahorro"):
+        meta = ("<b>Cumple la meta</b> de 8%" if ah["cumple_minimo_8pct"] else "<b>Debajo de la meta</b> de 8%")
+        aviso(f"{meta}: ahorra {ah['ahorro_pct']:.1%} esta semana — {mxn(ah['costo_extra_evitado_mxn'])} por horas "
+              f"extra evitadas y {mxn(ah['costo_sobrestaffing_evitado_mxn'])} por gente de más evitada.",
+              "bien" if ah["cumple_minimo_8pct"] else "ojo")
+        base_rep = rep["base"]
+        filas = pd.DataFrame([
+            {"Concepto": "Horas ordinarias", "Rol fijo de hoy": base_rep.get("horas_ordinarias_totales", 0),
+             "Con Alvea": rep["propuesta"]["horas_ordinarias"]},
+            {"Concepto": "Horas extra dobles", "Rol fijo de hoy": base_rep.get("horas_extra_doble_totales", 0),
+             "Con Alvea": rep["propuesta"]["horas_extra_doble"]},
+            {"Concepto": "Horas extra triples", "Rol fijo de hoy": base_rep.get("horas_extra_triple_totales", 0),
+             "Con Alvea": rep["propuesta"]["horas_extra_triple"]},
+            {"Concepto": "Horas de gente de más",
+             "Rol fijo de hoy": round(costos_ahorro._normalizar(base_rep)["horas_sobrestaffing"]),
+             "Con Alvea": rep["propuesta"].get("horas_sobrestaffing") or 0},
+            {"Concepto": "Costo de la semana (MXN)", "Rol fijo de hoy": round(ah["costo_base_mxn"]),
+             "Con Alvea": round(ah["costo_propuesta_mxn"])},
+        ])
+        st.dataframe(filas, hide_index=True, width="stretch",
+                     column_config={"Rol fijo de hoy": st.column_config.NumberColumn(format="%,d"),
+                                    "Con Alvea": st.column_config.NumberColumn(format="%,d")})
+        st.caption("Rol fijo de hoy: 3 turnos rotativos fijos; donde falta gente se alarga el turno con horas "
+                   "extra. Con Alvea: cada persona entra cada día a uno de 4 turnos de 8 h (o descansa); se elige "
+                   "la combinación más barata que cumple la ley del año y cubre la demanda de cada área por hora. "
+                   "Supuesto: la plantilla actual opera al 60% de su capacidad; se recalibra con datos reales.")
 
 
 def vista_semana(tienda_id: str, semana: date) -> None:
@@ -992,6 +1036,7 @@ def vista_semana(tienda_id: str, semana: date) -> None:
             st.markdown(f"<div class='sem-col'>{filas}<div class='sem-pie'>{int(r['personas'])} personas</div>"
                         f"<div class='sem-ahorro {color}'>ahorro {milesk(r['ahorro'])}</div>"
                         f"<div class='sem-pie'>rol fijo {milesk(r['base'])}</div></div>", unsafe_allow_html=True)
+    detalle_semana(rep, tienda_id, semana, turnos)
 
 
 def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date, faltas: dict) -> None:
@@ -1026,8 +1071,7 @@ def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date, faltas: dict
     linea = base.mark_line(color="#1d1d1f", strokeWidth=2, interpolate="step-after", strokeDash=[4, 3]).encode(
         y="Necesarias:Q")
     hay_faltas = (df["Falta"] != "—").any()
-    st.markdown("<div class='seccion'>Cobertura por hora</div>"
-                "<div class='leyenda'><span class='punto' style='background:#2a78d6'></span>Personas trabajando"
+    st.markdown("<div class='leyenda'><span class='punto' style='background:#2a78d6'></span>Personas trabajando"
                 + ("&nbsp;&nbsp;&nbsp;<span class='punto' style='background:#eb6834'></span>Falta gente de algún "
                    "área en hora pico (pasa el cursor para ver cuál)" if hay_faltas else "")
                 + "&nbsp;&nbsp;&nbsp;<span style='display:inline-block;width:14px;border-top:2px dashed #1d1d1f;"
@@ -1058,13 +1102,12 @@ def vista_dia(tienda_id: str, f: date) -> None:
     faltas_dia = {k: v for k, v in faltantes_pico(rep, turnos).items() if k[0] == f}
     sin_cubrir_dia = sum(sum(v.values()) for v in faltas_dia.values())
     rdia = resumen_diario(rep, turnos).set_index("fecha").loc[f]
+    trabajan_n = t_dia["empleado_id"].nunique()
     tiles([
-        ("Ahorro del día", mxn(rdia["ahorro"]), f"rol fijo {mxn(rdia['base'])} · Alvea {mxn(rdia['alvea'])}", "", True),
-        ("Personas trabajando", f"{t_dia['empleado_id'].nunique()}", f"de {len(plantilla)} en plantilla"),
-        ("Descansan", f"{len(plantilla) - t_dia['empleado_id'].nunique() - len(ausentes)}", "día libre de ley"),
-        ("Ausencias", f"{len(ausentes)}", "faltas previstas", "ojo" if ausentes else ""),
-        ("Horas pico sin cubrir", f"{sin_cubrir_dia}", "hoy, por área" if sin_cubrir_dia else "cobertura completa",
-         "mal" if sin_cubrir_dia else "bien"),
+        ("Ahorro del día", mxn(rdia["ahorro"]), f"rol fijo {mxn(rdia['base'])} → Alvea {mxn(rdia['alvea'])}", "", True),
+        ("Trabajan", f"{trabajan_n} de {len(plantilla)}",
+         f"{len(plantilla) - trabajan_n - len(ausentes)} descansan · {len(ausentes)} faltan"),
+        tile_pico(sin_cubrir_dia, " hoy"),
     ])
 
     # --- cambiar a alguien de turno (solo gerente): acción + resultado juntos, arriba ---
@@ -1117,7 +1160,8 @@ def vista_dia(tienda_id: str, f: date) -> None:
                     + ("".join(fila(e, "ausencia") for e in faltan) or "<div class='leyenda'>Nadie</div>")
                     + "</div>", unsafe_allow_html=True)
 
-    grafica_cobertura(rep, t_dia, f, faltas_dia)
+    with st.expander("Cobertura por hora" + (" · falta gente" if faltas_dia else ""), expanded=bool(faltas_dia)):
+        grafica_cobertura(rep, t_dia, f, faltas_dia)
 
 
 def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo) -> str | None:
@@ -1212,80 +1256,6 @@ def _calificar(rep: dict, tienda_id: str, clave: tuple) -> dict:
     return calif
 
 
-def pagina_tienda() -> None:
-    semana = st.session_state["semana"]
-    cab_izq, cab_der = st.columns([3, 2], vertical_alignment="bottom")
-    with cab_izq:
-        encabezado("Mi tienda" if auth["rol"] == "manager" else "Tienda",
-                   "Cuánto cuesta la semana y cuánto se ahorra frente al rol fijo de hoy.")
-    with cab_der:
-        tienda_id = selector_tienda("tda_tienda")
-    barra_fechas(f"{fmt_rango_semana(semana)}", "semana", "tda", domingo=semana)
-    rep = obtener_semana(tienda_id, semana)
-    marcar_calculada(tienda_id, semana)
-    if rep["status"] == "INFEASIBLE":
-        aviso("<b>No hay un horario legal posible esta semana</b> con la plantilla actual.", "mal")
-        return
-    ah, br = rep["ahorro_semanal"], rep["brecha_vs_techo"]
-    turnos = turnos_vigentes(rep, tienda_id)
-    tiles_dinero(rep)
-    if ah["cumple_minimo_8pct"]:
-        aviso(f"<b>Cumple la meta.</b> Ahorra {ah['ahorro_pct']:.1%} esta semana; la meta mínima es 8%.", "bien")
-    else:
-        aviso(f"<b>Debajo de la meta.</b> Ahorra {ah['ahorro_pct']:.1%} (meta mínima 8%). "
-              f"En años con jornada más corta la plantilla actual alcanza para menos horas; "
-              f"lo que falta se cubre con horas extra.", "ojo")
-
-    st.markdown("<div class='seccion'>De dónde sale el ahorro</div>", unsafe_allow_html=True)
-    base_rep = rep["base"]
-    filas = pd.DataFrame([
-        {"Concepto": "Horas ordinarias", "Rol fijo de hoy": base_rep.get("horas_ordinarias_totales", 0),
-         "Con Alvea": rep["propuesta"]["horas_ordinarias"]},
-        {"Concepto": "Horas extra dobles", "Rol fijo de hoy": base_rep.get("horas_extra_doble_totales", 0),
-         "Con Alvea": rep["propuesta"]["horas_extra_doble"]},
-        {"Concepto": "Horas extra triples", "Rol fijo de hoy": base_rep.get("horas_extra_triple_totales", 0),
-         "Con Alvea": rep["propuesta"]["horas_extra_triple"]},
-        {"Concepto": "Horas de más (sobrestaffing)",
-         "Rol fijo de hoy": round(costos_ahorro._normalizar(base_rep)["horas_sobrestaffing"]),
-         "Con Alvea": rep["propuesta"].get("horas_sobrestaffing") or 0},
-        {"Concepto": "Costo de la semana (MXN)", "Rol fijo de hoy": round(ah["costo_base_mxn"]),
-         "Con Alvea": round(ah["costo_propuesta_mxn"])},
-    ])
-    st.dataframe(filas, hide_index=True, width="stretch",
-                 column_config={"Rol fijo de hoy": st.column_config.NumberColumn(format="%,d"),
-                                "Con Alvea": st.column_config.NumberColumn(format="%,d")})
-
-    plantilla = rep["plantilla"]
-    export = turnos.merge(plantilla[["empleado_id", "nombre", "rol"]], on="empleado_id", how="left") \
-        .sort_values(["fecha", "hora_inicio", "nombre"])[
-        ["fecha", "turno", "hora_inicio", "hora_fin", "hora_pausa", "empleado_id", "nombre", "rol"]]
-    export["rol"] = export["rol"].map(ROL_ETIQUETA).fillna(export["rol"])
-    export.columns = ["Fecha", "Turno", "Entra", "Sale", "Descanso", "ID", "Nombre", "Área"]
-    reporte_txt = (
-        f"Alvea — Tienda {tienda_id}\nSemana {fmt_rango_semana(semana)} · jornada {horas_regimen(semana)} h "
-        f"({anio_regimen(semana)})\n\n{rep['resumen_ejecutivo']}\n\n"
-        f"Costo rol fijo de hoy: {mxn(ah['costo_base_mxn'])} MXN\nCosto con Alvea: {mxn(ah['costo_propuesta_mxn'])} MXN\n"
-        f"Ahorro: {mxn(ah['ahorro_total_mxn'])} MXN ({ah['ahorro_pct']:.1%})\n"
-        f"Captura del ahorro máximo teórico: {br.get('pct_del_techo_capturado', 0):.0%}\n")
-    d1, d2, _ = st.columns([1, 1, 2])
-    d1.download_button("Horario (CSV)", export.to_csv(index=False).encode("utf-8"),
-                       f"horario_{tienda_id}_{semana.isoformat()}.csv", "text/csv",
-                       icon=":material/download:", width="stretch")
-    d2.download_button("Reporte (TXT)", reporte_txt.encode("utf-8"),
-                       f"reporte_{tienda_id}_{semana.isoformat()}.txt", "text/plain",
-                       icon=":material/download:", width="stretch")
-    with st.expander("Cómo se calcula"):
-        st.markdown(
-            "- **Rol fijo de hoy**: 80 personas, 3 turnos rotativos fijos; donde falta gente se alarga el "
-            "turno con horas extra.\n"
-            "- **Con Alvea**: cada día cada persona entra a uno de 4 turnos fijos de 8 h (o descansa). "
-            "El optimizador elige la combinación más barata que cumple la ley y cubre la demanda por hora.\n"
-            "- **Reglas**: jornada semanal del año de esa semana, 1 día de descanso por cada 6, horas extra "
-            "dobles/triples con sus topes, descanso de media hora dentro del turno.\n"
-            "- **Supuesto de calibración**: la plantilla actual opera al 60% de su capacidad en una semana "
-            "promedio. Se ajusta con datos reales.")
-
-
 def pagina_resumen() -> None:
     semana = st.session_state["semana"]
     alcance = ("toda la red" if auth["rol"] == "super_admin"
@@ -1353,7 +1323,15 @@ def pagina_resumen() -> None:
 
 
 def pagina_avisos() -> None:
-    encabezado("Avisos", "Lo que necesita tu atención. Se generan solos.")
+    gestor = auth["rol"] != "manager"
+    encabezado("Avisos", "Lo que necesita tu atención" + (" y quién hizo qué." if gestor else "."))
+    lista_avisos()
+    if gestor:
+        with st.expander("Historial: quién hizo qué y cuándo"):
+            bloque_historial()
+
+
+def lista_avisos() -> None:
     todas = notificaciones.visible_para(notificaciones.cargar_notificaciones(DATA_DIR), auth_real)
     leidas = notificaciones.cargar_leidas(DATA_DIR)
     ids_leidas = set(leidas.loc[leidas["usuario"] == auth_real["usuario"], "id"]) if not leidas.empty else set()
@@ -1389,8 +1367,7 @@ def pagina_avisos() -> None:
             st.rerun()
 
 
-def pagina_historial() -> None:
-    encabezado("Historial", "Quién hizo qué y cuándo, dentro de tu alcance.")
+def bloque_historial() -> None:
     df = auditoria.visible_para(auditoria.cargar_auditoria(DATA_DIR), auth, set(visibles["tienda_id"]))
     df = df[df["tipo_evento"] != "pagina_visitada"] if not df.empty else df
     if df.empty:
@@ -1517,7 +1494,7 @@ def pagina_datos() -> None:
           else "<b>En uso:</b> datos de ejemplo.", "bien")
 
 
-RUTAS = {"Resumen": pagina_resumen, "Horario": pagina_horario, "Tienda": pagina_tienda,
-         "Avisos": pagina_avisos, "Historial": pagina_historial, "Usuarios": pagina_usuarios,
+RUTAS = {"Resumen": pagina_resumen, "Horario": pagina_horario,
+         "Avisos": pagina_avisos, "Usuarios": pagina_usuarios,
          "Reglas legales": pagina_reglas, "Datos": pagina_datos}
 RUTAS[pagina]()
