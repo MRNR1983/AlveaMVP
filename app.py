@@ -33,7 +33,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
-VERSION_MODELO = "2026-09-24-descansos-escalonados"
+VERSION_MODELO = "2026-09-24-extensiones-y-orden-legal"
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
 
@@ -42,6 +42,9 @@ FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada
 # su nombre en texto al lado -- el color nunca es la única señal.
 COLOR_TURNO = {"Apertura": "#2a78d6", "Intermedio": "#eb6834",
                "Refuerzo pico": "#1baf7a", "Cierre": "#eda100"}
+# Color por área (slots 5-8 de la misma paleta validada, distintos de los de turno).
+# Siempre acompañado del nombre del área en texto.
+ROL_COLOR = {"cajas": "#e87ba4", "piso_reposicion": "#008300", "perecederos": "#4a3aa7", "almacen": "#e34948"}
 ROL_ETIQUETA = {"cajas": "Cajas", "piso_reposicion": "Piso", "perecederos": "Perecederos",
                 "almacen": "Almacén"}
 DIAS_LARGOS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
@@ -359,6 +362,9 @@ div[class*="st-key-sem_"][class*="-hoy"] button { color: var(--accent); }
 .persona:last-child { border-bottom: none; }
 .persona .rol { font-size: 11px; color: var(--ink-2); white-space: nowrap; }
 .persona.cambio { background: #fff8e6; margin: 0 -12px; padding: 4px 12px; }
+.persona.sel { background: var(--accent-soft); margin: 0 -12px; padding: 4px 12px; box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; }
+.persona .pn { display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.estado-sel { font-size: 13.5px; margin-top: 8px; display: flex; align-items: center; }
 .leyenda { font-size: 12px; color: var(--ink-2); }
 .aviso { border-radius: 12px; padding: 12px 14px; font-size: 13.5px; margin: 6px 0 14px; border: 1px solid var(--line); background: #fff; }
 .aviso b { font-weight: 650; }
@@ -830,53 +836,88 @@ def vista_dia(tienda_id: str, f: date) -> None:
     ])
 
     # --- cambiar a alguien de turno (solo gerente): acción + resultado juntos, arriba ---
+    sel = None
     if auth["rol"] == "manager":
-        _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo)
+        sel = _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo)
     else:
         st.markdown("<div class='leyenda' style='margin:-6px 0 14px'>Vista de lectura: los cambios de turno "
                     "los hace el gerente de la tienda.</div>", unsafe_allow_html=True)
+
+    def fila(e: str, extra: str = "") -> str:
+        clases = "persona" + (" cambio" if e in editados_hoy else "") + (" sel" if e == sel else "")
+        return (f"<div class='{clases}'><span class='pn'><span class='punto' style='background:"
+                f"{ROL_COLOR.get(rol.get(e), '#8e8e93')}'></span>{nombre.get(e, e)}</span>"
+                f"<span class='rol' title='{ROL_ETIQUETA.get(rol.get(e), '')}'>{extra}</span></div>")
+
+    st.markdown("<div class='leyenda' style='margin:0 0 8px'>" + "&nbsp;&nbsp;".join(
+        f"<span class='punto' style='background:{ROL_COLOR[r]}'></span>{ROL_ETIQUETA[r]}" for r in ROL_COLOR)
+        + "</div>", unsafe_allow_html=True)
 
     # --- 4 columnas, una por turno ---
     cols = st.columns(len(catalogo), gap="small")
     for c, t in zip(cols, catalogo):
         del_turno = t_dia[t_dia["turno"] == t["turno"]]
-        pausa_de = dict(zip(del_turno["empleado_id"], del_turno["hora_pausa"]))
-        gente = sorted(pausa_de, key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
+        info = {r.empleado_id: r for r in del_turno.itertuples(index=False)}
+        gente = sorted(info, key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
         filas = "".join(
-            f"<div class='persona{' cambio' if e in editados_hoy else ''}'><span>{nombre.get(e, e)}</span>"
-            f"<span class='rol'>{ROL_ETIQUETA.get(rol.get(e), '')} · {int(pausa_de[e])} h</span></div>"
+            fila(e, f"{int(info[e].hora_pausa)}:00"
+                    + (" · +2 h" if int(info[e].hora_fin) - int(info[e].hora_inicio) > 8 else ""))
             for e in gente
         ) or "<div class='leyenda' style='padding:6px 0'>Nadie en este turno</div>"
-        ventana = t.get("pausas", [t["pausa"]])
-        desc = (f"descansos {min(ventana)}–{max(ventana) + 1} h" if len(ventana) > 1 else f"descanso {ventana[0]} h")
         c.markdown(
             f"<div class='turno-card'><div class='turno-cab' style='border-top:4px solid {COLOR_TURNO.get(t['turno'])}'>"
             f"<div class='turno-nombre'>{t['turno']}<span style='margin-left:auto;font-variant-numeric:tabular-nums'>"
             f"{len(gente)}</span></div>"
-            f"<div class='turno-horas'>{t['inicio']}:00 – {t['fin']}:00 · {desc}</div></div>"
+            f"<div class='turno-horas'>{t['inicio']}:00 – {t['fin']}:00 · hora = descanso</div></div>"
             f"<div class='turno-lista'>{filas}</div></div>", unsafe_allow_html=True)
+
+    # --- quién no trabaja hoy ---
+    trabajan = set(t_dia["empleado_id"])
+    descansan = sorted((e for e in plantilla["empleado_id"] if e not in trabajan and e not in ausentes),
+                       key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
+    faltan = sorted(ausentes, key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
+    abierto = sel is not None and (sel in descansan or sel in faltan)
+    with st.expander(f"Descansan ({len(descansan)}) · Ausencias ({len(faltan)})", expanded=abierto):
+        d1, d2 = st.columns(2)
+        d1.markdown("<div class='turno-lista' style='max-height:none;padding:0'>"
+                    + "".join(fila(e) for e in descansan) + "</div>", unsafe_allow_html=True)
+        d2.markdown("<div class='turno-lista' style='max-height:none;padding:0'>"
+                    + ("".join(fila(e, "ausencia") for e in faltan) or "<div class='leyenda'>Nadie</div>")
+                    + "</div>", unsafe_allow_html=True)
 
     grafica_cobertura(rep, t_dia, f)
 
 
-def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo) -> None:
+def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo) -> str | None:
+    """Panel de cambio. Regresa a la persona seleccionada (para resaltarla en las columnas)."""
     ediciones = st.session_state["ediciones"].setdefault(clave, [])
     with st.container(border=True, key="panel_cambio"):
         st.markdown("<div class='seccion' style='margin-top:0'>Cambiar a alguien de turno</div>",
                     unsafe_allow_html=True)
         turno_de = dict(zip(t_dia["empleado_id"], t_dia["turno"]))
-        candidatos = sorted((e for e in plantilla["empleado_id"] if e not in ausentes),
-                            key=lambda e: nombre.get(e, e))
+        horas_de = {r.empleado_id: (int(r.hora_inicio), int(r.hora_fin)) for r in t_dia.itertuples(index=False)}
+        candidatos = sorted(plantilla["empleado_id"], key=lambda e: nombre.get(e, e))
         c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="bottom")
         emp = c1.selectbox("Persona", candidatos, index=None, placeholder="Busca por nombre…",
                            key=f"cmb_emp_{f}_{len(ediciones)}",
-                           format_func=lambda e: f"{nombre.get(e, e)} · {ROL_ETIQUETA.get(rol.get(e), '')} · "
-                                                 f"{turno_de.get(e, 'descansa')}")
+                           format_func=lambda e: f"{nombre.get(e, e)} · {ROL_ETIQUETA.get(rol.get(e), '')}")
+        if emp in ausentes:
+            estado, actual = "ausencia (falta prevista)", None
+        elif emp in turno_de:
+            ini, fin = horas_de[emp]
+            estado, actual = f"{turno_de[emp]} ({ini}:00–{fin}:00)", turno_de[emp]
+        else:
+            estado, actual = "descansa", "Descanso"
         opciones = [t["turno"] for t in catalogo] + ["Descanso"]
-        actual = turno_de.get(emp, "Descanso") if emp else None
-        nuevo = c2.selectbox("Nuevo turno", [o for o in opciones if o != actual], index=None,
+        nuevo = c2.selectbox("Mover a", [o for o in opciones if o != actual], index=None,
                              placeholder="Elige turno", key=f"cmb_turno_{f}_{emp}_{len(ediciones)}",
-                             disabled=emp is None)
+                             disabled=emp is None or emp in ausentes)
+        if emp:
+            st.markdown(f"<div class='estado-sel'><span class='punto' style='background:"
+                        f"{ROL_COLOR.get(rol.get(emp), '#8e8e93')}'></span><b>{nombre.get(emp, emp)}</b>"
+                        f"&nbsp;· hoy:&nbsp;<b>{estado}</b>"
+                        + (" — no se puede mover" if emp in ausentes else "") + "</div>",
+                        unsafe_allow_html=True)
         if c3.button("Cambiar", type="primary", disabled=not (emp and nuevo), key=f"cmb_ok_{f}", width="stretch"):
             st.session_state["ediciones"][clave] = ediciones + [(emp, f, None if nuevo == "Descanso" else nuevo)]
             problema = validar_legal(turnos_vigentes(rep, tienda_id), emp, rep["anio"])
@@ -913,6 +954,7 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                 if ediciones:
                     _calificar(rep, tienda_id, clave)
                 st.rerun()
+    return emp
 
 
 def _calificar(rep: dict, tienda_id: str, clave: tuple) -> dict:
