@@ -9,13 +9,13 @@ Tienes todo lo del admin de zona, para las 50 tiendas, más **Ver como**, **Regl
 
 Ahorro de la semana de las 50 tiendas, tiendas en meta y tiendas sin horario legal.
 
-![Resumen de la red](img/s01_resumen_red.jpg)
+![Resumen de la red](img/s01_resumen_red.png)
 
 ## 2. Ver como
 
 Arriba del menú, **Ver como** te deja ver la app como una zona o una tienda, sin volver a entrar.
 
-![Ver como](img/s02_ver_como.jpg)
+![Ver como](img/s02_ver_como.png)
 
 ## 3. Salta a otro año de la reforma
 
@@ -23,7 +23,7 @@ La pastilla **Jornada 48 h · 2026** también es un botón: tócala y elige el a
 
 ![Elegir año](img/s03_anio.png)
 
-En 2030 el tope ya es 40 h y la tienda sigue sin dejar horas pico sin cubrir.
+En 2030 el tope ya es 40 h y la tienda sigue sin dejar horas pico sin cubrir. Las semanas de la demo (2026 y 2030) vienen precalculadas: el Resumen de las 50 tiendas abre al instante (2030: 21.7% de ahorro, 50 de 50 en meta).
 
 ![Semana en 2030](img/s04_2030.png)
 

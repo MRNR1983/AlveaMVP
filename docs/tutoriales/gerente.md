@@ -9,7 +9,7 @@ Solo ves tu tienda. Usuario: `Man001` … `Man050` (Man001 = tienda T001).
 
 Escribe tu usuario y la contraseña → **Entrar**.
 
-![Login](img/g01_login.jpg)
+![Login](img/g01_login.png)
 
 ## 2. Mira la semana
 
@@ -21,7 +21,7 @@ Abres en **Horario → Semana**. Arriba, lo que importa:
 Cada día muestra cuántas personas van en cada turno, el ahorro del día y el costo del rol fijo.
 **Hoy** te regresa a la semana actual; **‹ ›** cambian de semana. Toca **Jornada 48 h · 2026** para saltar a otro año de la reforma (hasta 40 h en 2030).
 
-![Semana](img/g02_semana.jpg)
+![Semana](img/g02_semana.png)
 
 ## 3. Abre el día
 
@@ -50,19 +50,19 @@ El color del punto es el área: cajas, piso, perecederos, almacén.
 
 La gráfica de cobertura marca en naranja las horas donde falta gente.
 
-![Cobertura](img/g08_cobertura.jpg)
+![Cobertura](img/g08_cobertura.png)
 
 ## 5. Mira el mes
 
 **Mes** te da cada día con personas y ahorro. La franja de color abajo dice cómo va el día: verde = bien, naranja = falta gente en pico, amarillo = más caro que el rol fijo.
 
-![Mes](img/g09_mes.jpg)
+![Mes](img/g09_mes.png)
 
 ## 6. Mi tienda: cuánto ahorras
 
 Costo de la semana con Alvea contra el rol fijo, de dónde sale el ahorro (horas extra evitadas y sobrestaffing evitado) y si cumples la meta de 8%.
 
-![Mi tienda](img/g10_mi_tienda.jpg)
+![Mi tienda](img/g10_mi_tienda.png)
 
 ## 7. Descarga, avisos y salida
 
@@ -70,4 +70,4 @@ Costo de la semana con Alvea contra el rol fijo, de dónde sale el ahorro (horas
 - **Avisos**: lo que necesita tu atención.
 - **Mi correo**: a dónde te llegan los avisos. **Privacidad y términos**: qué datos guarda Alvea. **Cerrar sesión** al terminar.
 
-![Descargas y salida](img/g11_descargas.jpg)
+![Descargas y salida](img/g11_descargas.png)

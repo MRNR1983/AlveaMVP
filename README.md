@@ -155,7 +155,8 @@ rol y formato bajo un supuesto explícito: **la plantilla actual opera al
 tienda se quedaba sin gente en la apertura). Con descansos escalonados
 por persona, turnos extendibles 2 h y el optimizador en dos pasos, el
 resultado con las 50 tiendas es 29% de ahorro en la red en 2026 (50/50
-tiendas ≥ 8%, 0 horas pico sin cubrir) y ~20% en 2030.
+tiendas ≥ 8%, 0 horas pico sin cubrir) y 21.7% en 2030 (50/50 ≥ 8%, 0 horas
+pico sin cubrir).
 
 ## Pendiente de validación legal
 

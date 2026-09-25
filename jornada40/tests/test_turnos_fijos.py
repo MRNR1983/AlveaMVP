@@ -108,3 +108,18 @@ def test_descansos_personales_dentro_de_la_ventana_del_turno(semana_real):
     grupos = t.groupby(["fecha", "turno"])
     grandes = [g for _, g in grupos if len(g) >= 10]
     assert grandes and any(g["hora_pausa"].nunique() > 1 for g in grandes)
+
+
+def test_calificacion_cuenta_pico_por_area():
+    """Quitar al único de almacén en pico es 'No recomendado' aunque en total
+    sobre gente de cajas: la calificación cuenta igual que la tarjeta (por área)."""
+    from jornada40 import costos_ahorro
+    f = date(2026, 9, 24)
+    plantilla = pd.DataFrame({"empleado_id": ["A", "C1", "C2"], "rol": ["almacen", "cajas", "cajas"],
+                              "salario_diario_mxn": [400.0] * 3})
+    demanda = pd.DataFrame({"fecha": [f, f], "hora": [18, 18], "rol": ["almacen", "cajas"],
+                            "personas_requeridas": [1, 1], "es_pico": [True, True]})
+    h = lambda emps: pd.DataFrame({"empleado_id": emps, "fecha": f, "hora": 18,  # noqa: E731
+                                   "trabajando": True, "en_pausa": False})
+    res = costos_ahorro.calificar_edicion_manual(h(["A", "C1", "C2"]), h(["C1", "C2"]), plantilla, demanda, 2026)
+    assert res["calificacion"] == "No recomendado"

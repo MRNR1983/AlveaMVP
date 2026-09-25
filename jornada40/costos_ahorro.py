@@ -335,19 +335,27 @@ def calificar_edicion_manual(
                                  "doble": doble, "triple": triple, "costo_mxn": costo}
         return costo_total, desglose
 
+    rol_de = dict(zip(plantilla_tienda_df["empleado_id"], plantilla_tienda_df["rol"])) \
+        if "rol" in plantilla_tienda_df.columns else {}
+
     def _deficit_pico(horario_df: pd.DataFrame) -> int:
+        """Horas-persona de pico sin cubrir, POR ÁREA (un cajero no cubre almacén):
+        la misma cuenta que la tarjeta "Horas pico sin cubrir" de la app."""
         if horario_df.empty or "es_pico" not in demanda_tienda_df.columns:
             return 0
         activos = horario_df[horario_df["trabajando"]]
         if "en_pausa" in activos.columns:  # quien está en su descanso no cubre esa hora
             activos = activos[~activos["en_pausa"].astype(bool)]
-        cobertura = activos.groupby(["fecha", "hora"]).size()
         pico = demanda_tienda_df[demanda_tienda_df["es_pico"]]
-        requerido = pico.groupby(["fecha", "hora"])["personas_requeridas"].sum()
+        por_area = bool(rol_de) and "rol" in pico.columns
+        claves = ["fecha", "hora", "rol"] if por_area else ["fecha", "hora"]
+        if por_area:
+            activos = activos.assign(rol=activos["empleado_id"].map(rol_de))
+        cobertura = activos.groupby(claves).size()
+        requerido = pico.groupby(claves)["personas_requeridas"].sum()
         deficit = 0
-        for (f, h), req in requerido.items():
-            cubierto = cobertura.get((f, h), 0)
-            deficit += max(0, int(req) - int(cubierto))
+        for k, req in requerido.items():
+            deficit += max(0, int(req) - int(cobertura.get(k, 0)))
         return deficit
 
     costo_original, desglose_original = _costo_y_desglose(horario_original_df)

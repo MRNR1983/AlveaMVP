@@ -36,7 +36,7 @@ para el detalle completo).
   semana sale sola de su fecha (48 → 40 h).
 - Optimizador con 4 turnos fijos por tienda; cambios manuales persona →
   turno, con bloqueo legal y calificación.
-- Ahorro con las 50 tiendas: 29% en 2026 (50/50 ≥ 8%, pico 100% cubierto) y ~20% en 2030 (supuesto
+- Ahorro con las 50 tiendas: 29% en 2026 (50/50 ≥ 8%, pico 100% cubierto) y 21.7% en 2030 (50/50, pico cubierto) (supuesto
   explícito: la plantilla actual opera al 60% de su capacidad en una semana
   promedio).
 - **Pendiente de validación legal**: tramo de tiempo extra al triple

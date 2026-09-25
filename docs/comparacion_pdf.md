@@ -2,17 +2,17 @@
 
 Fuente: "Reto técnico — Head de Producto y Tecnología — AIvena" (PDF adjunto
 al correo del 21-sep-2026). Cifras de la semana 20–26 sep 2026 (jornada
-48 h) y de una semana de junio 2030 (jornada 40 h), corriendo las 50 tiendas
-con el optimizador actual.
+48 h) y 22–28 sep 2030 (jornada 40 h), 50 tiendas. El solver es determinista:
+estas cifras son las mismas en la app en línea y en cualquier reinicio.
 
 | Lo que pide el PDF | Cómo lo cumple Alvea | Estado |
 | --- | --- | --- |
 | Herramienta funcional que, con datos operativos de una tienda (tráfico, ventas, plantilla, turnos), genere la programación semanal | Horario semanal por tienda: 4 turnos fijos, cada persona asignada día por día | Cumple |
-| a. Tope de 40 horas por empleado | El tope sale de la fecha de la semana: 48 h en 2026 → 40 h en 2030 (reducción escalonada del Decreto DOF 01-05-2026). La semana de 2030 opera a 40 h | Cumple (con la gradualidad de la ley; para mostrar 40 h en la demo, avanzar a una semana de 2030) |
+| a. Tope de 40 horas por empleado | El tope sale de la fecha de la semana: 48 h en 2026 → 40 h en 2030 (reducción escalonada del Decreto DOF 01-05-2026). La semana de 2030 opera a 40 h | Cumple (con la gradualidad de la ley; para mostrar 40 h en la demo, tocar la etiqueta "Jornada 48 h · 2026" y elegir 2030) |
 | b. Cuantificar en MXN el costo evitado frente a la programación actual | "Rol fijo de hoy" contra "Con Alvea" en Horario (semana y día), Mi tienda y Resumen | Cumple |
 | ~50 tiendas, ~80 FTE por tienda, domingo a domingo | 50 tiendas × 80 personas; semana domingo–sábado | Cumple |
-| Demostrar al menos 8% de ahorro en costo laboral total (horas extra y sobrestaffing evitados) | 2026: **29% en la red, 50 de 50 tiendas ≥ 8%** (mínimo 22.9%). 2030: **~20% en la red, todas ≥ 8%**. Mi tienda desglosa horas extra evitadas y sobrestaffing evitado | Cumple |
-| Sin caer en subdotación en horas pico | Cobertura pico como restricción dura. 2026: **0 horas pico sin cubrir en las 50 tiendas**. 2030: 5 tiendas con faltantes chicos (22 h en total) donde el rol fijo tiene 968 h: la plantilla actual ya no alcanza a 40 h y la app lo muestra | Cumple en 2026; en 2030 lo reporta como hallazgo de la reforma |
+| Demostrar al menos 8% de ahorro en costo laboral total (horas extra y sobrestaffing evitados) | 2026: **29.0% en la red ($1,889,625), 50 de 50 tiendas ≥ 8%** (mínimo 22.9%). 2030: **21.7% ($1,519,383), 50 de 50 ≥ 8%** (mínimo 14.9%). Mi tienda desglosa horas extra evitadas y sobrestaffing evitado | Cumple |
+| Sin caer en subdotación en horas pico | Cobertura pico como restricción dura, contada por área. **0 horas pico sin cubrir en las 50 tiendas, en 2026 y en 2030** | Cumple |
 | Datos definidos por el candidato (sintéticos o públicos) | Datos sintéticos con marca ficticia, calibrados (quincena, Buen Fin, Navidad, regreso a clases) | Cumple |
 | Automatizada: cualquiera del equipo la corre con datos de una tienda nueva sin operación manual | Página Datos: descargar formato → subir CSV → la app recalcula sola | Cumple (hoy la página Datos es solo para HQ) |
 | Stack y formato libres ("lo que llevarías a un cliente el lunes") | App web en línea (Streamlit), roles por usuario, descargas CSV/TXT | Cumple |

@@ -10,7 +10,7 @@ No cambias turnos (eso es del gerente). Usuario: `ADMIN-Z1` … `ADMIN-Z5`.
 Ahorro de la semana de toda tu zona, cuántas tiendas llegan a la meta (≥ 8%) y cuántas no tienen horario legal.
 La gráfica ordena las tiendas por ahorro; la línea punteada es la meta. Las que no llegan salen en naranja.
 
-![Resumen de zona](img/a01_resumen.jpg)
+![Resumen de zona](img/a01_resumen.png)
 
 ## 2. Avisos
 
@@ -28,21 +28,21 @@ Quién hizo qué y cuándo en tus tiendas (hora de México). Filtra por **Qué**
 
 En **Horario**, elige la tienda arriba a la derecha. Ves lo mismo que su gerente: semana, día y mes.
 
-![Horario de otra tienda](img/a04_horario_tienda.jpg)
+![Horario de otra tienda](img/a04_horario_tienda.png)
 
 En **Día** es vista de lectura: los cambios los hace el gerente.
 
-![Día en lectura](img/a05_dia_lectura.jpg)
+![Día en lectura](img/a05_dia_lectura.png)
 
 ## 5. Tienda: el detalle del ahorro
 
 Mismo desglose que ve el gerente (rol fijo vs. Alvea, horas extra y sobrestaffing evitados), para la tienda que elijas.
 
-![Tienda](img/a06_tienda.jpg)
+![Tienda](img/a06_tienda.png)
 
 ## 6. Usuarios
 
 Una cuenta por tienda. Quita la palomita de **Activo** para bloquear el acceso, o escribe el **Correo** para avisos → **Guardar**.
 El gerente recibe un aviso de que su cuenta cambió.
 
-![Usuarios](img/a07_usuarios.jpg)
+![Usuarios](img/a07_usuarios.png)

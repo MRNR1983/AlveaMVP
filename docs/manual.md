@@ -206,9 +206,9 @@ contra el Decreto DOF 01-05-2026.
 **Qué esperar de los números** (50 tiendas): en 2026 (48 h) la red ahorra
 29% y todas las tiendas pasan el 8%, sin horas pico descubiertas; el ahorro
 sale sobre todo de no tener gente de más (sobrestaffing) y de no pagar
-horas extra. En 2030 (40 h) baja a ~20% y algunas tiendas ya no alcanzan a
-cubrir todo el pico con la plantilla actual — el efecto de la reforma que el
-CFO necesita ver.
+horas extra. En 2030 (40 h) baja a 21.7%: menos horas ordinarias por persona
+encarecen la semana, pero las 50 tiendas siguen arriba de 8% y con el pico
+cubierto — el efecto de la reforma que el CFO necesita ver.
 
 ## Límites conocidos (honestos)
 

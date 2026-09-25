@@ -1192,7 +1192,8 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                 ultimo = ediciones.pop()
                 guardar_ediciones(st.session_state["ediciones"])
                 st.session_state.pop("_ultimo_intento", None)
-                registrar("cambio_deshecho", f"{ultimo[0]} · {ultimo[1]}", alcance=("tienda", tienda_id))
+                registrar("cambio_deshecho", f"{nombre.get(ultimo[0], ultimo[0])} ({ultimo[0]}) · {ultimo[1]}",
+                          alcance=("tienda", tienda_id))
                 st.session_state.pop(f"calif_{clave}", None)
                 if ediciones:
                     _calificar(rep, tienda_id, clave)
