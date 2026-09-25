@@ -8,7 +8,7 @@ Rediseño 24-sep-2026 (v2 de la interfaz). Principios:
      semana; nadie tiene que escoger un "año de régimen".
   4. Nada se calcula con un botón escondido: abrir una semana la calcula.
   5. Un día se lee como lo arma un gerente: 4 turnos fijos y quién está en
-     cada uno. Cambiar a alguien = persona -> turno. Nada de arrastrar.
+     cada uno. Cambiar a alguien = persona -> turno (se aplica al elegirlo). Nada de arrastrar.
 
 Correr local:  streamlit run app.py   (ver README.md)
 """
@@ -526,7 +526,35 @@ tiendas_df = datos_fijos()["tiendas"]
 st.session_state.setdefault("semana", SEMANA_MIN)
 st.session_state.setdefault("dia", max(hoy(), SEMANA_MIN))
 st.session_state.setdefault("cal_vista", "Semana")
-st.session_state.setdefault("ediciones", {})
+def cargar_ediciones() -> dict:
+    """Cambios manuales de turno guardados en disco: {(tienda, domingo): [(emp, fecha, turno|None)]}.
+    Se leen en cada corrida para que el admin vea lo que el gerente cambió."""
+    ruta = DATA_DIR / "ediciones.csv"
+    if not ruta.exists():
+        return {}
+    try:
+        df = pd.read_csv(ruta, dtype=str).fillna("")
+    except Exception:
+        return {}
+    out: dict = {}
+    for r in df.itertuples():
+        clave = (r.tienda_id, date.fromisoformat(r.semana))
+        out.setdefault(clave, []).append((r.empleado_id, date.fromisoformat(r.fecha), r.turno or None))
+    return out
+
+
+def guardar_ediciones(ed: dict) -> None:
+    filas = [{"tienda_id": t, "semana": s.isoformat(), "empleado_id": e, "fecha": f.isoformat(), "turno": tn or ""}
+             for (t, s), lista in ed.items() for e, f, tn in lista]
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(filas, columns=["tienda_id", "semana", "empleado_id", "fecha", "turno"]).to_csv(
+            DATA_DIR / "ediciones.csv", index=False)
+    except Exception:
+        pass
+
+
+st.session_state["ediciones"] = cargar_ediciones()
 
 
 def ir_a_fecha(f: date) -> None:
@@ -1108,7 +1136,7 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
         turno_de = dict(zip(t_dia["empleado_id"], t_dia["turno"]))
         horas_de = {r.empleado_id: (int(r.hora_inicio), int(r.hora_fin)) for r in t_dia.itertuples(index=False)}
         candidatos = sorted(plantilla["empleado_id"], key=lambda e: nombre.get(e, e))
-        c1, c2, c3 = st.columns([3, 2, 1], vertical_alignment="bottom")
+        c1, c2 = st.columns([3, 2], vertical_alignment="bottom")
         emp = c1.selectbox("Persona", candidatos, index=None, placeholder="Busca por nombre…",
                            key=f"cmb_emp_{f}_{len(ediciones)}",
                            format_func=lambda e: f"{nombre.get(e, e)} · {ROL_ETIQUETA.get(rol.get(e), '')}")
@@ -1129,7 +1157,9 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                         f"&nbsp;· hoy:&nbsp;<b>{estado}</b>"
                         + (" — no se puede mover" if emp in ausentes else "") + "</div>",
                         unsafe_allow_html=True)
-        if c3.button("Cambiar", type="primary", disabled=not (emp and nuevo), key=f"cmb_ok_{f}", width="stretch"):
+        intento = (emp, nuevo, f)   # se aplica al elegir el turno; "Deshacer" lo revierte
+        if emp and nuevo and st.session_state.get("_ultimo_intento") != intento:
+            st.session_state["_ultimo_intento"] = intento
             st.session_state["ediciones"][clave] = ediciones + [(emp, f, None if nuevo == "Descanso" else nuevo)]
             problema = validar_legal(turnos_vigentes(rep, tienda_id), emp, rep["anio"])
             if problema:
@@ -1150,10 +1180,13 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                         f"Tienda {tienda_id} · {fmt_dia(f)}: el gerente movió a {nombre.get(emp, emp)} a "
                         f"{nuevo}. {calif['calificacion']}: {calif['mensaje']}",
                         email_destino=correo_adm or None, tienda_id=tienda_id, fecha=f.isoformat())
+            guardar_ediciones(st.session_state["ediciones"])
             st.rerun()
 
         error = st.session_state.get(f"error_{clave}")
         calif = st.session_state.get(f"calif_{clave}")
+        if ediciones and not calif and not error:   # cambios guardados de otra sesión
+            calif = _calificar(rep, tienda_id, clave)
         if error:
             aviso(error, "mal")
         elif calif and ediciones:
@@ -1164,6 +1197,8 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                       f"<span style='color:var(--ink-2)'>· {len(ediciones)} cambio{'s' if len(ediciones) != 1 else ''} esta semana</span>", tipo)
             if c_btn.button("Deshacer", icon=":material/undo:", key="deshacer", width="stretch"):
                 ultimo = ediciones.pop()
+                guardar_ediciones(st.session_state["ediciones"])
+                st.session_state.pop("_ultimo_intento", None)
                 registrar("cambio_deshecho", f"{ultimo[0]} · {ultimo[1]}", alcance=("tienda", tienda_id))
                 st.session_state.pop(f"calif_{clave}", None)
                 if ediciones:

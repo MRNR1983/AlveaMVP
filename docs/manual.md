@@ -82,7 +82,8 @@ costo del rol fijo (los 7 días suman exacto el total de la semana). **Toca el n
 - **Cambiar a alguien de turno** (solo gerente; está arriba, junto a su
   resultado): elige a la persona (se puede buscar
   escribiendo su nombre; al lado ves su turno actual) → elige el nuevo
-  turno o **Descanso** → **Cambiar**.
+  turno o **Descanso**: se aplica en ese momento (hay **Deshacer**). El cambio
+  queda guardado y lo ve también el admin de zona.
   - Si el cambio rompe la ley (7 días seguidos o más horas que el máximo
     legal con extras), no se aplica y te dice por qué.
   - Si es legal, se aplica, la persona queda marcada en amarillo y arriba

@@ -28,25 +28,25 @@ Cada día muestra cuántas personas van en cada turno, el ahorro del día y el c
 Toca **Día**. Ves quién trabaja en cada uno de los 4 turnos, la hora de descanso de cada persona y quién hace **+2 h**.
 El color del punto es el área: cajas, piso, perecederos, almacén.
 
-![Día](img/g03_dia.jpg)
+![Día](img/g03_dia.png)
 
 ## 4. Cambia a alguien de turno
 
 1. En **Persona**, busca por nombre.
 
-   ![Buscar persona](img/g04_buscar.jpg)
+   ![Buscar persona](img/g04_buscar.png)
 
 2. Alvea te dice dónde está hoy y la marca en la lista.
 
-   ![Persona seleccionada](img/g05_persona.jpg)
+   ![Persona seleccionada](img/g05_persona.png)
 
-3. En **Mover a** solo aparecen los turnos donde *no* está (o Descanso).
+3. En **Mover a** solo aparecen los turnos donde *no* está (o Descanso). Al elegirlo, el cambio se aplica.
 
-   ![Mover a](img/g06_mover.jpg)
+   ![Mover a](img/g06_mover.png)
 
-4. **Cambiar**. Alvea califica el cambio al instante. Si deja la hora pico sin gente, dice **No recomendado** y avisa a tu admin de zona. Puedes **Deshacer**.
+4. Alvea califica el cambio al instante. Si deja la hora pico sin gente, dice **No recomendado** y avisa a tu admin de zona. Puedes **Deshacer**.
 
-   ![Calificación](img/g07_calificacion.jpg)
+   ![Calificación](img/g07_calificacion.png)
 
 La gráfica de cobertura marca en naranja las horas donde falta gente.
 

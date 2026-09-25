@@ -112,8 +112,8 @@ docs/
 - **Se calcula al abrir.** Abrir una semana (en Horario o Mi tienda) la
   calcula; no hay botón escondido. Los datos de cada semana se generan
   bajo demanda y son reproducibles.
-- **Cambios manuales.** En la vista Día: persona -> nuevo turno ->
-  Cambiar. Se bloquea si rompe la ley (7 días seguidos o más horas que el
+- **Cambios manuales.** En la vista Día: persona -> nuevo turno (se
+  aplica al elegirlo y queda guardado para el admin). Se bloquea si rompe la ley (7 días seguidos o más horas que el
   máximo legal) y si no, se califica contra el óptimo (costo y cobertura
   en pico). Se puede deshacer.
 
