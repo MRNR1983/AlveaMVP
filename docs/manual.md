@@ -85,4 +85,5 @@ cubierto — el efecto de la reforma que el CFO necesita ver.
 | Super Admin | Resumen de 50 tiendas 2026 y 2030 al instante; Ver como; Reglas legales | OK |
 | Super Admin · Datos | Semana 11 de 2027 (14–20 mar): se suben tráfico y ventas de las 12 tiendas CDMX con +40%. T001 pasa de $35,159 (27.5%) a $27,006 (19.7%) con el pico cubierto; T002 (fuera del archivo) queda en $38,147 y abre al instante; "Volver a los archivos originales" regresa T001 a $35,159 exacto. Una tienda nueva (T051) subida en Tiendas + Plantilla aparece en el selector con horario legal | OK |
 | Celular (390 px) | Sin scroll horizontal; cifras en 2 columnas | OK |
+| Todos los botones | `scripts/barrido_botones.py`: 117 revisiones con Gerente, Admin, Super Admin y Super Admin "viendo como" zona y tienda — Hoy, ‹ ›, Mes/Semana/Día, clic en días, salto de año, descargas, plegables, cambio de turno y Deshacer, avisos, historial y filtros, usuarios, reglas, subir/aplicar/quitar archivos, correo, privacidad, cerrar sesión | 117 OK |
 | Automáticas | 103 pruebas (`pytest jornada40/tests`), incluidas solver determinista, calificación por área y respaldo en GitHub simulado | Pasan |

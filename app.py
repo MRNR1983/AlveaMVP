@@ -683,6 +683,7 @@ def barra_fechas(titulo: str, paso: str, clave: str, extra=None, domingo: date |
     c_hoy, c_prev, c_next, c_tit, c_extra = st.columns([0.8, 0.45, 0.45, 4.2, 2.6], vertical_alignment="center")
     if c_hoy.button("Hoy", key=f"navf_hoy_{clave}"):
         ir_a_fecha(hoy())
+        st.session_state["mes_vista"] = (hoy().year, hoy().month)
         st.rerun()
     base = st.session_state["dia"]
     if paso == "mes":
@@ -692,9 +693,11 @@ def barra_fechas(titulo: str, paso: str, clave: str, extra=None, domingo: date |
         puede_sig = date(*sig, 1) <= FIN_HORIZONTE
         if c_prev.button("", icon=":material/chevron_left:", key=f"navf_prev_{clave}", disabled=not puede_ant):
             st.session_state["mes_vista"] = ant
+            ir_a_fecha(max(date(*ant, 1), hoy()))      # Semana y Día siguen al mes que se ve
             st.rerun()
         if c_next.button("", icon=":material/chevron_right:", key=f"navf_next_{clave}", disabled=not puede_sig):
             st.session_state["mes_vista"] = sig
+            ir_a_fecha(max(date(*sig, 1), hoy()))
             st.rerun()
     else:
         delta = timedelta(days=7 if paso == "semana" else 1)
@@ -1509,14 +1512,23 @@ def pagina_datos() -> None:
                           f"{tipo}_{dom.isoformat()}.csv" if info["semanal"] else f"{tipo}.csv", "text/csv",
                           icon=":material/download:", width="stretch", help=", ".join(info["columnas"]))
 
-    if any(p.is_file() for p in archivos.SUBIDOS.rglob("*")) if archivos.SUBIDOS.exists() else False:
-        with st.expander("Volver a los archivos originales"):
-            st.caption("Quita todo lo que se ha subido. Los horarios vuelven a los archivos con los que arrancó Alvea.")
-            if st.checkbox("Sí, quitar lo subido", key="conf_restaurar") and st.button("Quitar lo subido"):
-                n = archivos.restaurar_originales()
-                registrar("datos_restablecidos", f"{n} archivos")
-                st.session_state.pop("conf_restaurar", None)
-                st.rerun()
+    hay_subidos = archivos.SUBIDOS.exists() and any(p.is_file() for p in archivos.SUBIDOS.rglob("*"))
+    if hay_subidos and st.button("Volver a los archivos originales", icon=":material/restart_alt:"):
+        dialogo_restaurar()
+
+
+@st.dialog("Volver a los archivos originales")
+def dialogo_restaurar() -> None:
+    st.write("Se quita todo lo que se ha subido y los horarios vuelven a los archivos con los que arrancó Alvea. "
+             "Cambia los horarios de todos.")
+    c1, c2 = st.columns(2)
+    if c1.button("Sí, quitar lo subido", type="primary", width="stretch"):
+        n = archivos.restaurar_originales()
+        registrar("datos_restablecidos", f"{n} archivos")
+        st.session_state["_datos_hechos"] = [f"se quitaron {n} archivos subidos"]
+        st.rerun()
+    if c2.button("Cancelar", width="stretch"):
+        st.rerun()
 
 
 RUTAS = {"Resumen": pagina_resumen, "Horario": pagina_horario,
