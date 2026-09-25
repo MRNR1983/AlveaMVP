@@ -251,7 +251,8 @@ CSS = """
 }
 html, body, [class*="css"], .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif; }
 .stApp { background: #fbfbfd; color: var(--ink); }
-[data-testid="stToolbar"], footer, #MainMenu, [data-testid="stDecoration"] { display: none !important; }
+[data-testid="stToolbar"], footer, #MainMenu, [data-testid="stDecoration"],
+[data-testid="InputInstructions"] { display: none !important; }
 header[data-testid="stHeader"] { background: transparent; }
 .block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1180px; }
 h1, h2, h3 { letter-spacing: -0.02em; color: var(--ink); }
@@ -385,7 +386,7 @@ CSS_LOGIN = """
 section[data-testid="stSidebar"], header[data-testid="stHeader"] { display: none; }
 .block-container { max-width: 400px; padding-top: 14vh; }
 div[data-testid="stForm"] { border: 1px solid var(--line); border-radius: 18px; background: #fff; padding: 28px 26px 18px; }
-.lg-marca { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; text-align: center; }
+.lg-marca { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; text-align: center; margin-bottom: 22px; }
 .lg-sub { font-size: 14px; color: var(--ink-2); text-align: center; margin-bottom: 22px; }
 .lg-pie { font-size: 12px; color: var(--ink-3); text-align: center; margin-top: 14px; }
 </style>
@@ -425,11 +426,9 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 if "auth" not in st.session_state:
     st.markdown(CSS_LOGIN, unsafe_allow_html=True)
-    st.markdown("<div class='lg-marca'>Alvea</div>"
-                "<div class='lg-sub'>Horarios de tienda bajo la jornada de 40 horas</div>",
-                unsafe_allow_html=True)
+    st.markdown("<div class='lg-marca'>Alvea</div>", unsafe_allow_html=True)
     with st.form("form_login"):
-        usuario_txt = st.text_input("Usuario", placeholder="Ej. Man001, ADMIN-Z1 o SADMIN")
+        usuario_txt = st.text_input("Usuario")
         password = st.text_input("Contraseña", type="password")
         enviado = st.form_submit_button("Entrar", type="primary", width="stretch")
     if enviado:
@@ -445,7 +444,6 @@ if "auth" not in st.session_state:
                                         "zona_id": fila["zona_id"], "usuario": fila["usuario"]}
             registrar("sesion_iniciada")
             st.rerun()
-    st.markdown("<div class='lg-pie'>Datos 100% sintéticos · marca ficticia</div>", unsafe_allow_html=True)
     st.stop()
 
 auth_real = st.session_state["auth"]
@@ -705,9 +703,8 @@ def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
                 ir_a_fecha(f)
                 st.session_state["cal_vista"] = "Día"
                 st.rerun()
-    st.markdown(f"<div class='leyenda' style='margin-top:10px'><span class='punto' style='background:#1baf7a'></span>semana ya abierta · Toca un día para ver sus turnos. "
-                f"El horario empieza hoy ({hoy().day} {MESES_CORTOS[hoy().month]} {hoy().year}) y llega a "
-                f"diciembre de 2030; la jornada baja sola cada año (48 → 40 h).</div>", unsafe_allow_html=True)
+    st.markdown("<div class='leyenda' style='margin-top:10px'><span class='punto' style='background:#1baf7a'>"
+                "</span>semana calculada</div>", unsafe_allow_html=True)
 
 
 def tiles_operacion(rep: dict, turnos: pd.DataFrame) -> None:
@@ -769,8 +766,6 @@ def vista_semana(tienda_id: str, semana: date) -> None:
             )
             st.markdown(f"<div class='sem-col'>{filas}<div class='sem-pie'>{t_dia['empleado_id'].nunique()} "
                         f"personas</div></div>", unsafe_allow_html=True)
-    st.markdown("<div class='leyenda' style='margin-top:10px'>Número = personas en ese turno. "
-                "Toca un día para ver nombres y hacer cambios.</div>", unsafe_allow_html=True)
 
 
 def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date) -> None:
@@ -860,8 +855,6 @@ def vista_dia(tienda_id: str, f: date) -> None:
             f"{len(gente)}</span></div>"
             f"<div class='turno-horas'>{t['inicio']}:00 – {t['fin']}:00 · {desc}</div></div>"
             f"<div class='turno-lista'>{filas}</div></div>", unsafe_allow_html=True)
-    st.markdown("<div class='leyenda' style='margin-top:6px'>Junto a cada nombre: su área y la hora en que "
-                "toma su descanso (escalonados para que el turno nunca se vacíe).</div>", unsafe_allow_html=True)
 
     grafica_cobertura(rep, t_dia, f)
 
@@ -1175,7 +1168,7 @@ def pagina_reglas() -> None:
 
 
 def pagina_datos() -> None:
-    encabezado("Datos", "Por defecto la app usa datos sintéticos. Aquí puedes usar los tuyos.")
+    encabezado("Datos", "Usa tus propios archivos.")
     f = datos_fijos()
     ej = datos_semana_ejemplo(SEMANA_MIN)
     ejemplos = {"tiendas": f["tiendas"], "plantilla": f["plantilla"], "trafico": ej["trafico"],
@@ -1212,7 +1205,7 @@ def pagina_datos() -> None:
         st.rerun()
     en_uso = st.session_state.get("datos_subidos")
     aviso(f"<b>En uso:</b> tus archivos de {', '.join(nombres[k].lower() for k in en_uso)}; el resto, ejemplo." if en_uso
-          else "<b>En uso:</b> datos de ejemplo (marca ficticia, 100% sintéticos).", "bien")
+          else "<b>En uso:</b> datos de ejemplo.", "bien")
 
 
 RUTAS = {"Resumen": pagina_resumen, "Horario": pagina_horario, "Tienda": pagina_tienda,
