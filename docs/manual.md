@@ -175,13 +175,18 @@ contra el Decreto DOF 01-05-2026.
 - **Rol fijo de hoy (base)**: 80 personas en 3 turnos rotativos fijos;
   donde falta gente se alarga el turno con horas extra.
 - **Alvea**: cada tienda tiene 4 turnos fijos de 8 h con arranques
-  repartidos entre la apertura y el cierre. Cada día, cada persona entra a
-  uno de esos turnos (o descansa) y toma su descanso en la 4.ª, 5.ª o 6.ª
-  hora del turno; el optimizador reparte los descansos para que la
-  cobertura no caiga en horas pico. El optimizador (OR-Tools
-  CP-SAT) elige la combinación más barata que cumple:
-  jornada semanal del año, 1 día de descanso por cada 6, topes de extras
-  dobles y triples, ausencias previstas, y cobertura de las horas pico.
+  repartidos entre la apertura y el cierre; cualquier turno puede
+  extenderse 2 h (tiempo extra legal, máx. 3 días por semana y persona).
+  El cálculo va en dos pasos:
+  1. **Cuántos**: un modelo por área (Cajas, Piso, Perecederos, Almacén)
+     decide cuántas personas van a cada turno cada día y cuántas descansan
+     a cada hora. Las horas pico se cubren siempre (restricción dura). Es
+     exacto y se resuelve al óptimo en segundos.
+  2. **Quiénes**: un segundo modelo exacto reparte los nombres sin tocar
+     días de ausencia, con máx. 6 días trabajados y repartiendo las
+     extensiones para no pagar extra de más.
+  El costo se calcula sobre el horario final con nombres, pagando las horas
+  en orden legal (ordinarias → dobles → triples).
 - **Techo teórico**: el mismo modelo sin penalizar exceso ni déficit
   fuera de pico; sirve para decir qué parte del ahorro posible se captura.
 - **Valor hora** = salario diario ÷ (jornada semanal ÷ 6). A menor jornada

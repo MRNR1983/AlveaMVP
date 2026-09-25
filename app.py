@@ -33,7 +33,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
-VERSION_MODELO = "2026-09-24-extensiones-y-orden-legal"
+VERSION_MODELO = "2026-09-24-agregado-por-area"
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
 
@@ -331,10 +331,20 @@ div[class*="st-key-mes_"] button:disabled { background: transparent; border-colo
 div[class*="st-key-mes_"][class*="-hoy"] button { border: 2px solid var(--accent); color: var(--accent); font-weight: 700; }
 div[class*="st-key-mes_"][class*="-sel"] button { background: var(--accent-soft); }
 div[class*="st-key-mes_"] button > div { justify-content: flex-start !important; }
-div[class*="st-key-mes_"][class*="-calc"] button { position: relative; }
-div[class*="st-key-mes_"][class*="-calc"] button::after { content: ""; position: absolute; left: 11px; bottom: 10px;
-  width: 6px; height: 6px; border-radius: 999px; background: #1baf7a; }
-.cal-vacia { aspect-ratio: 1.35; min-height: 3.2rem; }
+div[class*="st-key-mes_"] button p { white-space: pre-line; text-align: left; line-height: 1.35; margin: 0; }
+div[class*="st-key-mes_"] button { aspect-ratio: auto !important; min-height: 5.6rem !important; height: auto;
+  align-items: flex-start !important; }
+div[class*="st-key-mes_"] button p { line-height: 1.5 !important; }
+div[class*="st-key-mes_"] button p br + br { display: none; }
+div[class*="st-key-mes_"] button > div, div[class*="st-key-mes_"] button [data-testid="stMarkdownContainer"] {
+  width: 100%; justify-content: flex-start !important; text-align: left; }
+div[class*="st-key-mes_"][class*="-ok"] button, div[class*="st-key-mes_"][class*="-falta"] button,
+div[class*="st-key-mes_"][class*="-caro"] button { box-shadow: inset 0 -4px 0 #1baf7a; }
+div[class*="st-key-mes_"][class*="-falta"] button { box-shadow: inset 0 -4px 0 #eb6834; }
+div[class*="st-key-mes_"][class*="-caro"] button { box-shadow: inset 0 -4px 0 #eda100; }
+div[class*="st-key-mes_"] button p { font-size: 12px; color: var(--ink-2); }
+div[class*="st-key-mes_"] button p strong { font-size: 15px; color: var(--ink); }
+.cal-vacia { min-height: 5.6rem; }
 
 /* ---------- calendario: semana ---------- */
 div[class*="st-key-sem_"] button {
@@ -350,6 +360,7 @@ div[class*="st-key-sem_"][class*="-hoy"] button { color: var(--accent); }
 .sem-turno .h { color: var(--ink-2); font-size: 11px; }
 .punto { display: inline-block; width: 8px; height: 8px; border-radius: 999px; margin-right: 6px; flex: 0 0 8px; }
 .sem-pie { font-size: 11.5px; color: var(--ink-2); text-align: center; padding-top: 2px; }
+.sem-ahorro { font-size: 13px; font-weight: 650; text-align: center; padding-top: 4px; font-variant-numeric: tabular-nums; }
 
 /* ---------- calendario: día ---------- */
 .turno-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
@@ -693,6 +704,13 @@ def pagina_horario() -> None:
 def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
     calculadas = {k[1] for k in registro_calculadas()
                   if k[0] == tienda_id and k[2:] == (version_datos(), VERSION_MODELO)}
+    resumen: dict = {}
+    for dom in {calendario.semana_de(f)[0] for fila in calendario.matriz_mes(anio, mes) for f in fila if f}:
+        if dom in calculadas:
+            rep = calcular_semana_tienda(tienda_id, dom, version_datos())
+            if rep["status"] != "INFEASIBLE":
+                for r in resumen_diario(rep, turnos_vigentes(rep, tienda_id)).itertuples(index=False):
+                    resumen[r.fecha] = r
     cols = st.columns(7)
     for c, n in zip(cols, calendario.DIAS_SEMANA_ABREV):
         c.markdown(f"<div class='cal-dow'>{n}</div>", unsafe_allow_html=True)
@@ -704,27 +722,118 @@ def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
                 continue
             fuera = f < SEMANA_MIN or f > FIN_HORIZONTE
             suf = "-hoy" if f == hoy() else ("-sel" if f == st.session_state["dia"] else "")
-            calc = "-calc" if calendario.semana_de(f)[0] in calculadas else ""
-            if c.button(str(f.day), key=f"mes_{f.isoformat()}{suf}{calc}", disabled=fuera, width="stretch"):
+            r = resumen.get(f)
+            if r is not None and not fuera:
+                estado = "-falta" if r.pico_sin else ("-ok" if r.ahorro >= 0 else "-caro")
+                etiqueta = f"**{f.day}**  \n{r.personas} personas  \nahorro {milesk(r.ahorro)}"
+            else:
+                estado, etiqueta = "", str(f.day)
+            if c.button(etiqueta, key=f"mes_{f.isoformat()}{suf}{estado}", disabled=fuera, width="stretch"):
                 ir_a_fecha(f)
                 st.session_state["cal_vista"] = "Día"
                 st.rerun()
-    st.markdown("<div class='leyenda' style='margin-top:10px'><span class='punto' style='background:#1baf7a'>"
-                "</span>semana calculada</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='leyenda' style='margin-top:10px'>"
+        "<span class='punto' style='background:#1baf7a'></span>con ahorro y pico cubierto&nbsp;&nbsp;&nbsp;"
+        "<span class='punto' style='background:#eb6834'></span>falta gente en hora pico&nbsp;&nbsp;&nbsp;"
+        "<span class='punto' style='background:#d2d2d7'></span>sin calcular (toca el día)</div>",
+        unsafe_allow_html=True)
 
 
-def tiles_operacion(rep: dict, turnos: pd.DataFrame) -> None:
-    """Horario = operación: personas y cobertura. El dinero vive en Mi tienda / Resumen."""
-    prop = rep["propuesta"]
-    extra = (prop.get("horas_extra_doble") or 0) + (prop.get("horas_extra_triple") or 0)
-    sin_cubrir = prop.get("horas_subdotacion_pico") or 0
-    horas = int((turnos["hora_fin"] - turnos["hora_inicio"]).sum())
+def costo_por_persona(rep: dict, turnos: pd.DataFrame) -> dict:
+    """Costo semanal por persona del horario vigente, pagando en orden legal."""
+    fref = date(rep["anio"], 1, 1)
+    tope = reglas.regla_vigente("jornada_ordinaria_semanal_horas", fref)
+    t_dbl = reglas.regla_vigente("extra_tope_doble_semanal_horas", fref)
+    m_dbl = reglas.regla_vigente("pago_extra_doble_multiplicador", fref)
+    m_tpl = reglas.regla_vigente("pago_extra_triple_multiplicador", fref)
+    sal = dict(zip(rep["plantilla"]["empleado_id"], rep["plantilla"]["salario_diario_mxn"]))
+    h = (turnos["hora_fin"] - turnos["hora_inicio"]).groupby(turnos["empleado_id"]).sum()
+    out = {}
+    for e, hh in h.items():
+        vh = sal[e] / (tope / 6)
+        o = min(hh, tope); dbl = min(max(0, hh - tope), t_dbl); tpl = max(0, hh - tope - t_dbl)
+        out[e] = o * vh + dbl * vh * m_dbl + tpl * vh * m_tpl
+    return out
+
+
+def resumen_diario(rep: dict, turnos: pd.DataFrame) -> pd.DataFrame:
+    """Por día: personas, costo con Alvea, costo con el rol fijo de hoy, ahorro y horas pico sin
+    cubrir. Los costos semanales se reparten por día según las horas trabajadas cada día, así
+    que la suma de los 7 días cuadra exacto con el total de la semana."""
+    semana = rep["fecha_inicio"]
+    dias = [semana + timedelta(days=i) for i in range(7)]
+    # Alvea
+    cp = costo_por_persona(rep, turnos)
+    t = turnos.assign(h=turnos["hora_fin"] - turnos["hora_inicio"])
+    h_sem = t.groupby("empleado_id")["h"].transform("sum")
+    t["costo"] = t["empleado_id"].map(cp) * t["h"] / h_sem
+    alvea = t.groupby("fecha")["costo"].sum()
+    personas = t.groupby("fecha")["empleado_id"].nunique()
+    # Rol fijo (base)
+    base = rep["base"]
+    cu = base["cuadrillas"]
+    cu = cu[cu["turno"] != "descanso"].assign(h=lambda x: x["hora_fin"] - x["hora_inicio"])
+    cu["fecha"] = pd.to_datetime(cu["fecha"]).dt.date
+    rh = base["resultado_horas"].copy()
+    rh["fecha"] = pd.to_datetime(rh["fecha"]).dt.date
+    h_base = cu.groupby("fecha")["h"].sum().add(
+        rh.groupby("fecha")[["horas_extra_doble", "horas_extra_triple"]].sum().sum(axis=1), fill_value=0)
+    base_dia = h_base / h_base.sum() * rep["ahorro_semanal"]["costo_base_mxn"] if h_base.sum() else h_base
+    faltas = faltantes_pico(rep, turnos)
+    filas = []
+    for d in dias:
+        a, b = float(alvea.get(d, 0.0)), float(base_dia.get(d, 0.0))
+        filas.append({"fecha": d, "personas": int(personas.get(d, 0)), "alvea": a, "base": b, "ahorro": b - a,
+                      "pico_sin": sum(sum(v.values()) for k, v in faltas.items() if k[0] == d)})
+    return pd.DataFrame(filas)
+
+
+def milesk(v: float) -> str:
+    return f"${v/1000:,.1f}k" if abs(v) >= 1000 else f"${v:,.0f}"
+
+
+def faltantes_pico(rep: dict, turnos: pd.DataFrame) -> dict:
+    """{(fecha, hora): {rol: personas que faltan}} en horas pico, calculado sobre el
+    horario VIGENTE (con cambios manuales) y POR ÁREA -- igual que la cifra de
+    "Horas pico sin cubrir", para que tarjeta y gráfica siempre cuadren."""
+    rol_de = dict(zip(rep["plantilla"]["empleado_id"], rep["plantilla"]["rol"]))
+    cob: dict = {}
+    for r in turnos.itertuples(index=False):
+        for h in range(int(r.hora_inicio), int(r.hora_fin)):
+            if h != int(r.hora_pausa):
+                k = (r.fecha, h, rol_de.get(r.empleado_id))
+                cob[k] = cob.get(k, 0) + 1
+    dem = rep["demanda"]
+    out: dict = {}
+    for r in dem[dem["es_pico"]].itertuples(index=False):
+        falta = int(r.personas_requeridas) - cob.get((r.fecha, int(r.hora), r.rol), 0)
+        if falta > 0:
+            out.setdefault((r.fecha, int(r.hora)), {})[r.rol] = falta
+    return out
+
+
+def horas_extra_vigentes(rep: dict, turnos: pd.DataFrame) -> int:
+    tope = reglas.regla_vigente("jornada_ordinaria_semanal_horas", date(rep["anio"], 1, 1))
+    h = (turnos["hora_fin"] - turnos["hora_inicio"]).groupby(turnos["empleado_id"]).sum()
+    return int((h - tope).clip(lower=0).sum())
+
+
+def tiles_semana(rep: dict, turnos: pd.DataFrame, rd: pd.DataFrame) -> None:
+    """Beneficio arriba (ahorro vs. rol fijo de hoy) y la operación que lo respalda."""
+    base, alvea = rd["base"].sum(), rd["alvea"].sum()
+    ahorro = base - alvea
+    extra = horas_extra_vigentes(rep, turnos)
+    b = rep["base"]
+    extra_base = int(b.get("horas_extra_doble_totales", 0) + b.get("horas_extra_triple_totales", 0))
+    sin_cubrir = int(rd["pico_sin"].sum())
     tiles([
-        ("Personas con turno", f"{turnos['empleado_id'].nunique()}", f"de {len(rep['plantilla'])} en plantilla"),
-        ("Horas programadas", f"{horas:,}", "en la semana"),
-        ("Horas extra", f"{extra:,}", "dobles + triples" if extra else "ninguna esta semana", "ojo" if extra else ""),
-        ("Horas pico sin cubrir", f"{sin_cubrir:,}", "falta gente en las horas más cargadas" if sin_cubrir
-         else "cobertura completa", "mal" if sin_cubrir else "bien"),
+        ("Ahorro de la semana", mxn(ahorro), f"{ahorro / base:.1%} menos que el rol fijo" if base else "", "", True),
+        ("Rol fijo de hoy", mxn(base), "costo de la semana"),
+        ("Con Alvea", mxn(alvea), "costo de la semana"),
+        ("Horas extra", f"{extra:,}", f"rol fijo: {extra_base:,}", "ojo" if extra else ""),
+        ("Horas pico sin cubrir", f"{sin_cubrir:,}", "por área" if sin_cubrir else "cobertura completa",
+         "mal" if sin_cubrir else "bien"),
     ])
 
 
@@ -751,7 +860,8 @@ def vista_semana(tienda_id: str, semana: date) -> None:
         aviso("<b>No hay un horario legal posible esta semana</b> con la plantilla actual.", "mal")
         return
     turnos = turnos_vigentes(rep, tienda_id)
-    tiles_operacion(rep, turnos)
+    rd = resumen_diario(rep, turnos).set_index("fecha")
+    tiles_semana(rep, turnos, rd)
     catalogo = rep["propuesta"]["catalogo_turnos"]
     cols = st.columns(7, gap="small")
     for i, c in enumerate(cols):
@@ -770,11 +880,14 @@ def vista_semana(tienda_id: str, semana: date) -> None:
                 f"<b>{int((t_dia['turno'] == t['turno']).sum())}</b></div>"
                 for t in catalogo
             )
-            st.markdown(f"<div class='sem-col'>{filas}<div class='sem-pie'>{t_dia['empleado_id'].nunique()} "
-                        f"personas</div></div>", unsafe_allow_html=True)
+            r = rd.loc[f]
+            color = "mal" if r["pico_sin"] else ("bien" if r["ahorro"] >= 0 else "ojo")
+            st.markdown(f"<div class='sem-col'>{filas}<div class='sem-pie'>{int(r['personas'])} personas</div>"
+                        f"<div class='sem-ahorro {color}'>ahorro {milesk(r['ahorro'])}</div>"
+                        f"<div class='sem-pie'>rol fijo {milesk(r['base'])}</div></div>", unsafe_allow_html=True)
 
 
-def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date) -> None:
+def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date, faltas: dict) -> None:
     dem = rep["demanda"]
     dem = dem[dem["fecha"] == f].groupby("hora", as_index=False)["personas_requeridas"].sum()
     dem = dem[dem["personas_requeridas"] > 0]
@@ -790,19 +903,27 @@ def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date) -> None:
     df["Trabajando"] = df["hora"].map(cob)
     df["Necesarias"] = df["hora"].map(dict(zip(dem["hora"], dem["personas_requeridas"]))).fillna(0)
     df["Hora"] = df["hora"].map(lambda h: f"{h}:00")
+    df["Falta"] = df["hora"].map(lambda h: ", ".join(
+        f"{n} {ROL_ETIQUETA.get(r, r)}" for r, n in faltas.get((f, h), {}).items()) or "—")
+    df["Estado"] = df["Falta"].map(lambda x: "Falta gente en pico" if x != "—" else "Cubierta")
     base = alt.Chart(df).encode(x=alt.X("Hora:N", sort=None, title=None,
                                         axis=alt.Axis(labelAngle=0, labelColor="#6e6e73", tickSize=0,
                                                       domainColor="#e5e5ea")))
-    barras = base.mark_bar(color="#2a78d6", cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=18).encode(
+    barras = base.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=18).encode(
         y=alt.Y("Trabajando:Q", title=None, axis=alt.Axis(gridColor="#f0f0f3", labelColor="#6e6e73",
                                                          domain=False, tickSize=0)),
+        color=alt.Color("Estado:N", scale=alt.Scale(domain=["Cubierta", "Falta gente en pico"],
+                                                     range=["#2a78d6", "#eb6834"]), legend=None),
         tooltip=[alt.Tooltip("Hora:N"), alt.Tooltip("Trabajando:Q", title="Trabajando"),
-                 alt.Tooltip("Necesarias:Q", title="Necesarias")])
+                 alt.Tooltip("Necesarias:Q", title="Necesarias"), alt.Tooltip("Falta:N", title="Falta")])
     linea = base.mark_line(color="#1d1d1f", strokeWidth=2, interpolate="step-after", strokeDash=[4, 3]).encode(
         y="Necesarias:Q")
+    hay_faltas = (df["Falta"] != "—").any()
     st.markdown("<div class='seccion'>Cobertura por hora</div>"
                 "<div class='leyenda'><span class='punto' style='background:#2a78d6'></span>Personas trabajando"
-                "&nbsp;&nbsp;&nbsp;<span style='display:inline-block;width:14px;border-top:2px dashed #1d1d1f;"
+                + ("&nbsp;&nbsp;&nbsp;<span class='punto' style='background:#eb6834'></span>Falta gente de algún "
+                   "área en hora pico (pasa el cursor para ver cuál)" if hay_faltas else "")
+                + "&nbsp;&nbsp;&nbsp;<span style='display:inline-block;width:14px;border-top:2px dashed #1d1d1f;"
                 "vertical-align:middle;margin-right:6px'></span>Personas necesarias</div>",
                 unsafe_allow_html=True)
     st.altair_chart((barras + linea).properties(height=190).configure_view(strokeWidth=0), width="stretch")
@@ -827,12 +948,16 @@ def vista_dia(tienda_id: str, f: date) -> None:
     editados_hoy = {e for e, fe, _ in ediciones if fe == f}
 
     catalogo = rep["propuesta"]["catalogo_turnos"]
-    horas_dia = int((t_dia["hora_fin"] - t_dia["hora_inicio"]).sum())
+    faltas_dia = {k: v for k, v in faltantes_pico(rep, turnos).items() if k[0] == f}
+    sin_cubrir_dia = sum(sum(v.values()) for v in faltas_dia.values())
+    rdia = resumen_diario(rep, turnos).set_index("fecha").loc[f]
     tiles([
+        ("Ahorro del día", mxn(rdia["ahorro"]), f"rol fijo {mxn(rdia['base'])} · Alvea {mxn(rdia['alvea'])}", "", True),
         ("Personas trabajando", f"{t_dia['empleado_id'].nunique()}", f"de {len(plantilla)} en plantilla"),
-        ("Horas programadas", f"{horas_dia:,}", "incluye 1 h de descanso pagado c/u"),
         ("Descansan", f"{len(plantilla) - t_dia['empleado_id'].nunique() - len(ausentes)}", "día libre de ley"),
         ("Ausencias", f"{len(ausentes)}", "faltas previstas", "ojo" if ausentes else ""),
+        ("Horas pico sin cubrir", f"{sin_cubrir_dia}", "hoy, por área" if sin_cubrir_dia else "cobertura completa",
+         "mal" if sin_cubrir_dia else "bien"),
     ])
 
     # --- cambiar a alguien de turno (solo gerente): acción + resultado juntos, arriba ---
@@ -885,7 +1010,7 @@ def vista_dia(tienda_id: str, f: date) -> None:
                     + ("".join(fila(e, "ausencia") for e in faltan) or "<div class='leyenda'>Nadie</div>")
                     + "</div>", unsafe_allow_html=True)
 
-    grafica_cobertura(rep, t_dia, f)
+    grafica_cobertura(rep, t_dia, f, faltas_dia)
 
 
 def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo) -> str | None:

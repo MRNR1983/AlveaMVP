@@ -307,3 +307,17 @@ por rol en todas las páginas, AppTest del cambio de turno (permitido y
 bloqueado por 7.º día), AppTest del régimen en semanas de 2026/2027/2029/
 2030, y capturas en navegador (Chromium) de login, Mes, Semana, Día con
 cambio, Mi tienda y Resumen de zona.
+
+
+## 24-sep-2026 (noche) — Comparación contra el PDF y optimizador estable
+
+Al comparar contra el PDF ("sin caer en subdotación en horas pico") y
+correr las 50 tiendas completas se encontró que el modelo persona por
+persona (~13 mil variables) con límite de 10 s daba resultados inestables:
+29 de 50 tiendas con horas pico sin cubrir y algunas con ahorro negativo.
+Causas: (1) sin forma de usar tiempo extra en 2026 (6 días x 8 h = 48 h);
+(2) el solver podía asignar horas "triples" teniendo cupo al doble; (3) el
+tamaño del modelo. Cambios: turnos extendibles +2 h (art. 66), orden legal
+de horas extra, y un modelo en dos pasos (conteos por área, exacto y
+óptimo en segundos; luego reparto exacto de nombres). Verificado con las
+50 tiendas en 2026 y 2030.
