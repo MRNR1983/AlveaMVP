@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 _COLS_NOTIF = ["id", "timestamp", "alcance_tipo", "alcance_valor", "tipo",
-               "severidad", "mensaje", "correo_enviado"]
+               "severidad", "mensaje", "correo_enviado", "tienda_id", "fecha"]
 _COLS_LEIDAS = ["id", "usuario"]
 
 SEVERIDADES: dict[str, dict] = {
@@ -64,9 +64,12 @@ def crear_notificacion(
     severidad: str,
     mensaje: str,
     email_destino: str | None = None,
+    tienda_id: str | None = None,
+    fecha: str | None = None,
 ) -> None:
     """Crea una notificación in-app y, si hay correo destino y SMTP
-    configurado, intenta también enviarla por correo (best-effort)."""
+    configurado, intenta también enviarla por correo (best-effort).
+    ``tienda_id``/``fecha`` (ISO) permiten abrir ese día desde el aviso."""
     correo_ok = False
     if email_destino:
         correo_ok = intentar_enviar_correo(
@@ -79,9 +82,14 @@ def crear_notificacion(
             "timestamp": datetime.now(ZoneInfo("America/Mexico_City")).replace(tzinfo=None).isoformat(timespec="seconds"),
             "alcance_tipo": alcance_tipo, "alcance_valor": alcance_valor or "",
             "tipo": tipo, "severidad": severidad, "mensaje": mensaje,
-            "correo_enviado": correo_ok,
+            "correo_enviado": correo_ok, "tienda_id": tienda_id or "", "fecha": fecha or "",
         }])
         ruta = _ruta_notif(data_dir)
+        if ruta.exists():
+            previas = pd.read_csv(ruta)
+            if list(previas.columns) != _COLS_NOTIF:   # archivo de una versión anterior: se migra
+                pd.concat([previas, fila], ignore_index=True).reindex(columns=_COLS_NOTIF).to_csv(ruta, index=False)
+                return
         fila.to_csv(ruta, mode="a", header=not ruta.exists(), index=False)
     except Exception:
         pass

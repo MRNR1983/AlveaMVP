@@ -23,6 +23,7 @@ para el detalle completo).
 - [Comparación contra el PDF del reto](comparacion_pdf.html)
 - [Manual de uso (toda la app) + checklist de verificación](manual.html)
 - Tutoriales por rol: [Gerente](tutoriales/gerente.html) · [Admin de zona](tutoriales/admin.html) · [Super Admin](tutoriales/sadmin.html)
+- [Checklist antes de publicar (20 puntos)](checklist_publicacion.html)
 - [README — cómo correrlo, estructura, supuestos](https://github.com/MRNR1983/AlveaMVP/blob/main/README.md)
 - [Guion de demo (45 min con el CEO/CFO)](guion_demo.html)
 - [Registro de uso de herramientas agénticas](registro_agentic.html)

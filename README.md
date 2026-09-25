@@ -121,6 +121,8 @@ Detalle completo en [`docs/manual.md`](docs/manual.md).
 
 **Tutoriales por rol** (con capturas de la app en línea): [Gerente](docs/tutoriales/gerente.md) · [Admin de zona](docs/tutoriales/admin.md) · [Super Admin](docs/tutoriales/sadmin.md).
 
+Checklist de publicación (privacidad, seguridad, móvil, contraste, etc.): [`docs/checklist_publicacion.md`](docs/checklist_publicacion.md).
+
 ## Supuestos clave (y de dónde salen)
 
 - **Retailer de referencia**: autoservicio genérico (perfil tipo súper/híper

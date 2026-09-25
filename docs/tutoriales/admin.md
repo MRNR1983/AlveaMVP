@@ -14,9 +14,9 @@ La gráfica ordena las tiendas por ahorro; la línea punteada es la meta. Las qu
 
 ## 2. Avisos
 
-Aquí llegan los cambios que un gerente hizo y Alvea no recomienda (por ejemplo, dejar 2 h de pico sin cubrir). Márcalos como **Leído** cuando los atiendas.
+Aquí llegan los cambios que un gerente hizo y Alvea no recomienda (por ejemplo, dejar 2 h de pico sin cubrir). **Ver día** te lleva directo a ese día de esa tienda; **Leído** lo quita de pendientes.
 
-![Avisos](img/a02_avisos.jpg)
+![Avisos](img/a02_avisos.png)
 
 ## 3. Historial
 

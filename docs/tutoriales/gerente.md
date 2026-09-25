@@ -19,7 +19,7 @@ Abres en **Horario → Semana**. Arriba, lo que importa:
 - **Horas extra** (con Alvea vs. rol fijo) y **Horas pico sin cubrir** (debe estar en 0).
 
 Cada día muestra cuántas personas van en cada turno, el ahorro del día y el costo del rol fijo.
-**Hoy** te regresa a la semana actual; **‹ ›** cambian de semana.
+**Hoy** te regresa a la semana actual; **‹ ›** cambian de semana. Toca **Jornada 48 h · 2026** para saltar a otro año de la reforma (hasta 40 h en 2030).
 
 ![Semana](img/g02_semana.jpg)
 
@@ -68,6 +68,6 @@ Costo de la semana con Alvea contra el rol fijo, de dónde sale el ahorro (horas
 
 - **Horario (CSV)** para imprimir o subir a nómina; **Reporte (TXT)** para mandar por correo.
 - **Avisos**: lo que necesita tu atención.
-- **Mi correo**: a dónde te llegan los avisos. **Cerrar sesión** al terminar.
+- **Mi correo**: a dónde te llegan los avisos. **Privacidad y términos**: qué datos guarda Alvea. **Cerrar sesión** al terminar.
 
 ![Descargas y salida](img/g11_descargas.jpg)

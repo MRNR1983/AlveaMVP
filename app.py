@@ -14,6 +14,8 @@ Correr local:  streamlit run app.py   (ver README.md)
 """
 from __future__ import annotations
 
+import re
+
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -171,6 +173,22 @@ def calcular_semana_tienda(tienda_id: str, domingo: date, version_datos: int,
 
 
 @st.cache_resource
+def intentos_fallidos() -> dict:
+    """usuario -> lista de horas de intentos fallidos (compartido entre sesiones)."""
+    return {}
+
+
+MAX_INTENTOS, VENTANA_BLOQUEO = 5, timedelta(minutes=5)
+
+
+def bloqueado_hasta(usuario: str) -> datetime | None:
+    ahora = datetime.now()
+    recientes = [t for t in intentos_fallidos().get(usuario, []) if ahora - t < VENTANA_BLOQUEO]
+    intentos_fallidos()[usuario] = recientes
+    return recientes[0] + VENTANA_BLOQUEO if len(recientes) >= MAX_INTENTOS else None
+
+
+@st.cache_resource
 def registro_calculadas() -> set:
     """(tienda, semana, versión de datos) ya calculadas en este servidor. Compartido entre
     sesiones: si HQ prepara las 50 tiendas antes de la demo, todos las ven al instante."""
@@ -262,10 +280,10 @@ def tiendas_visibles(auth_: dict) -> pd.DataFrame:
 CSS = """
 <style>
 :root {
-  --ink: #1d1d1f; --ink-2: #6e6e73; --ink-3: #8e8e93;
+  --ink: #1d1d1f; --ink-2: #5f5f64; --ink-3: #6b6b70;
   --line: #e5e5ea; --line-2: #d2d2d7; --fill: #f5f5f7; --surface: #ffffff;
-  --accent: #0071e3; --accent-soft: #eaf3ff;
-  --good: #1f8a3b; --warn: #b25e00; --bad: #c9252c;
+  --accent: #0071e3; --accent-soft: #eaf3ff; --accent-ink: #0060c2;
+  --good: #1a7a34; --warn: #9a5200; --bad: #c9252c;
 }
 html, body, [class*="css"], .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif; }
 .stApp { background: #fbfbfd; color: var(--ink); }
@@ -314,7 +332,7 @@ div[class*="st-key-sb_salir"] button {
 .pg-contexto { font-size: 13.5px; color: var(--ink-2); margin: 4px 0 18px; }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
         background: var(--fill); color: var(--ink); border: 1px solid var(--line); margin-left: 6px; }
-.pill-azul { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.pill-azul { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
 
 /* ---------- tarjetas de métricas ---------- */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 4px 0 20px; }
@@ -335,7 +353,7 @@ div[class*="st-key-navf_"] button:hover { border-color: var(--accent); color: va
 .nav-titulo { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
 .nav-titulo .pill { vertical-align: 3px; }
 [class*="st-key-anio_"] button[data-testid="stPopoverButton"] {
-  background: var(--accent-soft) !important; color: var(--accent) !important; border: none !important;
+  background: var(--accent-soft) !important; color: var(--accent-ink) !important; border: none !important;
   border-radius: 999px !important; min-height: 0 !important; padding: 3px 10px !important; }
 [class*="st-key-anio_"] button[data-testid="stPopoverButton"] p { font-size: 12px !important; font-weight: 600 !important; }
 
@@ -347,7 +365,8 @@ div[class*="st-key-mes_"] button {
   background: #fff; color: var(--ink); font-size: 15px; font-weight: 500; box-shadow: none;
   align-items: flex-start; justify-content: flex-start; padding: 8px 11px; }
 div[class*="st-key-mes_"] button:hover:not(:disabled) { border-color: var(--accent); background: #f7fbff; color: var(--ink); }
-div[class*="st-key-mes_"] button:disabled { background: transparent; border-color: transparent; color: #c7c7cc; }
+div[class*="st-key-mes_"] button:disabled { background: transparent !important; border-color: transparent !important;
+  box-shadow: none !important; color: #c7c7cc; }
 div[class*="st-key-mes_"][class*="-hoy"] button { border: 2px solid var(--accent); color: var(--accent); font-weight: 700; }
 div[class*="st-key-mes_"][class*="-sel"] button { background: var(--accent-soft); }
 div[class*="st-key-mes_"] button > div { justify-content: flex-start !important; }
@@ -469,14 +488,21 @@ if "auth" not in st.session_state:
         password = st.text_input("Contraseña", type="password")
         enviado = st.form_submit_button("Entrar", type="primary", width="stretch")
     if enviado:
+        clave_u = usuario_txt.strip().upper()
         fila = usuarios.buscar_usuario(usuario_txt, usuarios_con_estado())
-        if fila is None:
-            st.error("No encontramos ese usuario.")
+        hasta = bloqueado_hasta(clave_u)
+        if not usuario_txt.strip() or not password:
+            st.error("Escribe tu usuario y tu contraseña.")
+        elif hasta:
+            mins = max(1, int((hasta - datetime.now()).total_seconds() // 60) + 1)
+            st.error(f"Demasiados intentos. Vuelve a intentar en {mins} min.")
+        elif fila is None or password != usuarios.password_login():
+            intentos_fallidos().setdefault(clave_u, []).append(datetime.now())
+            st.error("Usuario o contraseña incorrectos.")
         elif not fila["activo"]:
             st.error("Esta cuenta está desactivada. Pide a HQ que la reactive.")
-        elif password != usuarios.password_login():
-            st.error("Contraseña incorrecta.")
         else:
+            intentos_fallidos().pop(clave_u, None)
             st.session_state["auth"] = {"rol": fila["rol"], "tienda_id": fila["tienda_id"],
                                         "zona_id": fila["zona_id"], "usuario": fila["usuario"]}
             registrar("sesion_iniciada")
@@ -514,6 +540,19 @@ def ir_a_fecha(f: date) -> None:
 # ---------------------------------------------------------------------------
 
 auth = auth_real
+@st.dialog("Privacidad y términos")
+def dialogo_legal() -> None:
+    st.markdown(
+        "**Qué guardamos.** Tu usuario, el correo que tú escribas y lo que haces en la app "
+        "(inicio de sesión, cambios de turno), para el Historial. Nada más.\n\n"
+        "**Para qué.** Para mandarte avisos y para que tu admin vea quién cambió qué.\n\n"
+        "**Cookies.** Solo las necesarias para mantener tu sesión. Sin publicidad ni analítica de terceros.\n\n"
+        "**Tus datos.** Pide a HQ corregir o borrar tu correo cuando quieras.\n\n"
+        "**Términos.** Alvea es un prototipo con datos de ejemplo. Propone horarios; la decisión "
+        "y la responsabilidad legal de cada horario son de la empresa. Una regla (horas extra al "
+        "triple) está pendiente de validar con un abogado laboral.")
+
+
 PAGINAS = {  # etiqueta -> ícono
     "Resumen": "insights", "Horario": "calendar_month", "Tienda": "storefront",
     "Avisos": "notifications", "Historial": "history", "Usuarios": "group",
@@ -577,11 +616,16 @@ with st.sidebar:
         st.caption("Aquí te llegan los avisos urgentes de tu cuenta.")
         correo = st.text_input("Correo", value=_fila_actual.get("email") or "", key="mi_correo",
                                placeholder="nombre@empresa.mx", label_visibility="collapsed")
-        if st.button("Guardar", key="sb_correo", type="primary"):
+        correo_ok = not correo.strip() or re.fullmatch(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}", correo.strip())
+        if correo.strip() and not correo_ok:
+            st.caption(":red[Revisa el correo: falta @ o el dominio.]")
+        if st.button("Guardar", key="sb_correo", type="primary", disabled=not correo_ok):
             usuarios_df.loc[usuarios_df["usuario"] == auth_real["usuario"], "email"] = correo.strip()
             _guardar_estado_usuarios(usuarios_df)
             registrar("correo_actualizado")
             st.toast("Correo guardado.", icon=":material/check_circle:")
+    if st.button("Privacidad y términos", key="sb_legal", type="tertiary", width="stretch"):
+        dialogo_legal()
     if st.button("Cerrar sesión", key="sb_salir", icon=":material/logout:", width="stretch"):
         registrar("sesion_cerrada")
         for k in list(st.session_state.keys()):
@@ -612,7 +656,8 @@ def selector_anio(domingo: date, clave: str) -> None:
     """Pastilla "Jornada 48 h · 2026" que además deja saltar a otro año de la
     reducción (misma fecha de hoy en ese año) sin dar 200 clics en ›."""
     anio = anio_regimen(domingo)
-    with st.popover(f"Jornada {horas_regimen(domingo)} h · {anio}", key=f"anio_{clave}"):
+    gen = st.session_state.get("anio_gen", 0)   # cambiar la key cierra el popover tras elegir
+    with st.popover(f"Jornada {horas_regimen(domingo)} h · {anio}", key=f"anio_{clave}_g{gen}"):
         st.caption("Ir al año")
         for y in range(SEMANA_MIN.year, FIN_HORIZONTE.year + 1):
             h = horas_regimen(calendario.semana_de(date(y, 7, 1))[0])
@@ -620,6 +665,7 @@ def selector_anio(domingo: date, clave: str) -> None:
                 t = hoy() if y == hoy().year else date(y, hoy().month, min(hoy().day, 28))
                 ir_a_fecha(t)
                 st.session_state["mes_vista"] = (t.year, t.month)
+                st.session_state["anio_gen"] = gen + 1
                 st.rerun()
 
 
@@ -775,6 +821,7 @@ def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
         "<div class='leyenda' style='margin-top:10px'>"
         "<span class='punto' style='background:#1baf7a'></span>con ahorro y pico cubierto&nbsp;&nbsp;&nbsp;"
         "<span class='punto' style='background:#eb6834'></span>falta gente en hora pico&nbsp;&nbsp;&nbsp;"
+        "<span class='punto' style='background:#eda100'></span>más caro que el rol fijo&nbsp;&nbsp;&nbsp;"
         "<span class='punto' style='background:#d2d2d7'></span>sin calcular (toca el día)</div>",
         unsafe_allow_html=True)
 
@@ -1095,11 +1142,14 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                           alcance=("tienda", tienda_id))
                 if calif["calificacion"] in ("No recomendado", "Costoso", "Caro"):
                     zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
+                    adm = usuarios_df[(usuarios_df["rol"] == "admin") & (usuarios_df["zona_id"] == zona)]
+                    correo_adm = str(adm["email"].iloc[0]) if len(adm) and pd.notna(adm["email"].iloc[0]) else ""
                     notificaciones.crear_notificacion(
                         DATA_DIR, "zona", zona, "turno_calificado",
                         "critico" if calif["calificacion"] == "No recomendado" else "advertencia",
                         f"Tienda {tienda_id} · {fmt_dia(f)}: el gerente movió a {nombre.get(emp, emp)} a "
-                        f"{nuevo}. {calif['calificacion']}: {calif['mensaje']}")
+                        f"{nuevo}. {calif['calificacion']}: {calif['mensaje']}",
+                        email_destino=correo_adm or None, tienda_id=tienda_id, fecha=f.isoformat())
             st.rerun()
 
         error = st.session_state.get(f"error_{clave}")
@@ -1111,7 +1161,7 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
             c_msg, c_btn = st.columns([5, 1], vertical_alignment="center")
             with c_msg:
                 aviso(f"<b>{calif['calificacion']}.</b> {calif['mensaje']} "
-                      f"<span style='color:#6e6e73'>· {len(ediciones)} cambio{'s' if len(ediciones) != 1 else ''} esta semana</span>", tipo)
+                      f"<span style='color:var(--ink-2)'>· {len(ediciones)} cambio{'s' if len(ediciones) != 1 else ''} esta semana</span>", tipo)
             if c_btn.button("Deshacer", icon=":material/undo:", key="deshacer", width="stretch"):
                 ultimo = ediciones.pop()
                 registrar("cambio_deshecho", f"{ultimo[0]} · {ultimo[1]}", alcance=("tienda", tienda_id))
@@ -1289,13 +1339,23 @@ def pagina_avisos() -> None:
     for _, n in todas.iterrows():
         no_leida = n["id"] not in ids_leidas
         cuando = str(n["timestamp"])[:16].replace("T", " ")
-        c1, c2 = st.columns([8, 1], vertical_alignment="center")
+        c1, c2, c3 = st.columns([8, 1.1, 1], vertical_alignment="center")
         with c1:
             aviso(f"{'<b>' if no_leida else ''}{n['mensaje']}{'</b>' if no_leida else ''}"
                   f"<div class='leyenda' style='margin-top:3px'>{cuando}"
-                  f"{' · también por correo' if n.get('correo_enviado') else ''}</div>",
+                  f"{' · también por correo' if n.get('correo_enviado') is True else ''}</div>",
                   tipo.get(n["severidad"], "bien"))
-        if no_leida and c2.button("Leído", key=f"leido_{n['id']}"):
+        t_id, fe = str(n.get("tienda_id") or ""), str(n.get("fecha") or "")
+        if t_id not in ("", "nan") and fe not in ("", "nan") and t_id in set(visibles["tienda_id"]):
+            if c2.button("Ver día", key=f"ver_{n['id']}", icon=":material/calendar_today:"):
+                if no_leida:
+                    notificaciones.marcar_leidas(DATA_DIR, [n["id"]], auth_real["usuario"])
+                st.session_state["tienda_sel"] = st.session_state["hor_tienda"] = t_id
+                ir_a_fecha(date.fromisoformat(fe[:10]))
+                st.session_state["cal_vista"] = "Día"
+                st.session_state["pagina"] = "Horario"
+                st.rerun()
+        if no_leida and c3.button("Leído", key=f"leido_{n['id']}"):
             notificaciones.marcar_leidas(DATA_DIR, [n["id"]], auth_real["usuario"])
             st.rerun()
 
@@ -1399,9 +1459,17 @@ def pagina_datos() -> None:
         a = c.file_uploader(nombres[k], type=["csv"], key=f"up_{k}")
         if a is not None:
             try:
-                subidos[k] = pd.read_csv(a)
-            except Exception as e:
-                c.error(f"No se pudo leer: {e}")
+                df_sub = pd.read_csv(a)
+            except Exception:
+                c.error("No se pudo leer. Guárdalo como CSV (separado por comas).")
+                continue
+            faltan = [col for col in ejemplos[k].columns if col not in df_sub.columns]
+            if faltan:
+                c.error(f"Faltan columnas: {', '.join(faltan)}. Usa el formato del paso 1.")
+            elif df_sub.empty:
+                c.error("El archivo está vacío.")
+            else:
+                subidos[k] = df_sub
     c1, c2, _ = st.columns([1, 1, 2])
     if c1.button("Usar mis archivos", type="primary", disabled=not subidos, width="stretch"):
         st.session_state.setdefault("datos_subidos", {}).update(subidos)
