@@ -5,7 +5,7 @@ Revisión del 24-sep-2026 sobre alveamvp.streamlit.app. ✅ cumple · ⚠️ cum
 | # | Punto | Estado | Qué se hizo / por qué |
 |---|---|---|---|
 | 1 | Política de privacidad | ✅ | "Privacidad y términos" en el menú: qué se guarda, para qué, cookies, cómo borrar el correo |
-| 2 | Términos y condiciones | ✅ | En el mismo diálogo: prototipo con datos de ejemplo; la decisión legal del horario es de la empresa |
+| 2 | Términos y condiciones | ✅ | En el mismo diálogo: prototipo que propone horarios con los archivos cargados; la decisión legal del horario es de la empresa |
 | 3 | API y secretos | ⚠️ | Sin tokens ni llaves en el repo; SMTP va en `st.secrets`. La contraseña de demo es compartida y pública a propósito para evaluadores: cambiar a contraseñas individuales con hash antes de uso real |
 | 4 | Forzar HTTPS | ✅ | Streamlit Cloud sirve solo HTTPS |
 | 5 | Banner de cookies | — | Solo cookies de sesión necesarias, sin rastreo ni publicidad (declarado en Privacidad) |

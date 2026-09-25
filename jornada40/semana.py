@@ -18,8 +18,8 @@ def anio_regimen(domingo: date) -> int:
 
 
 def calcular(tienda_id: str, domingo: date, datos: dict[str, pd.DataFrame], tiempo_limite_seg: float,
-             version_modelo: str, usar_precalculado: bool = True) -> tuple[dict, dict, dict]:
-    """Regresa (reporte, propuesta, techo)."""
+             version_modelo: str, huella: str | None = None) -> tuple[dict, dict, dict]:
+    """Regresa (reporte, propuesta, techo). Con ``huella`` usa el resultado guardado si existe."""
     anio = anio_regimen(domingo)
     tiendas_t = datos["tiendas"].loc[datos["tiendas"]["tienda_id"] == tienda_id]
     plantilla_t = datos["plantilla"].loc[datos["plantilla"]["tienda_id"] == tienda_id]
@@ -32,7 +32,7 @@ def calcular(tienda_id: str, domingo: date, datos: dict[str, pd.DataFrame], tiem
         demanda_personal.calcular_demanda_tienda(tienda_id, trafico_t, ventas_t, tiendas_t))
     base = escenario_base.calcular_horario_base_tienda(
         tienda_id, anio, plantilla_t, ausentismo_t, demanda, fecha_inicio=domingo)
-    guardado = precalculado.cargar(version_modelo, tienda_id, domingo) if usar_precalculado else None
+    guardado = precalculado.cargar(version_modelo, tienda_id, domingo, huella) if huella else None
     if guardado:
         propuesta, techo = guardado
     else:

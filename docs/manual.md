@@ -1,7 +1,8 @@
 # Manual de Alvea (PMV)
 
 Alvea arma el horario semanal de cada tienda de Autoservicio MX (marca
-ficticia, datos 100% sintéticos), cumple la jornada legal de cada año de
+ficticia), trabaja con archivos (tiendas, plantilla, tráfico, ventas y
+ausentismo), cumple la jornada legal de cada año de
 la reforma (48 h en 2026 → 40 h en 2030) y dice cuánto se ahorra frente al
 rol fijo con el que se programa hoy.
 
@@ -43,13 +44,13 @@ historial; **Usuarios** es quién entra. Solo el gerente cambia turnos.
 - **Valor hora** = salario diario ÷ (jornada semanal ÷ 6). A menor jornada
   legal, mayor valor hora: el salario semanal no baja.
 
-**Supuestos a calibrar con datos reales**
+**Supuestos a calibrar**
 - La plantilla actual (80 FTE, reparto fijo por área) opera al **60% de su
   capacidad a 48 h en una semana promedio**. Sin este supuesto la demanda
-  sintética era tan baja que el ahorro salía en 50–70% (irreal).
+  de los archivos de arranque era tan baja que el ahorro salía en 50–70% (irreal).
 - Tiempo de atención en caja, productividad por área y temporadas
   (quincena, Buen Fin, Navidad, regreso a clases) — ver `CONFIG` en
-  `demanda_personal.py` y `datos_sinteticos.py`.
+  `demanda_personal.py` y `datos_sinteticos.py` (el que escribe los archivos de arranque).
 - El tramo de horas extra al triple (art. 68) está pendiente de validación
   legal.
 
@@ -63,8 +64,8 @@ cubierto — el efecto de la reforma que el CFO necesita ver.
 ## 3. Límites conocidos
 
 - Turnos nocturnos/mixtos (7 y 7.5 h) no se modelan; todos son de 8 h.
-- Los archivos que HQ sube en **Datos** aplican a su sesión; los demás
-  usuarios siguen viendo los datos de ejemplo.
+- Una tienda-semana con archivos nuevos tarda ~25–100 s la primera vez;
+  después abre al instante.
 - Sin el secreto `github_token` en Streamlit Cloud, historial, avisos y
   cambios de turno se pierden si la app se reinicia (ver README).
 - Una semana no precalculada tarda ~25 s por tienda la primera vez.
@@ -81,6 +82,7 @@ cubierto — el efecto de la reforma que el CFO necesita ver.
 | Gerente | Login; Semana (3 cifras, descargas, de dónde sale el ahorro); salto a 2030; Día; cambio de turno en 2 pasos con calificación "No recomendado" y Deshacer; gráfica de cobertura que se abre sola; Mes; Avisos; Mi correo con validación; Privacidad y términos; Cerrar sesión | OK |
 | Gerente | Cambio ilegal (7.º día) bloqueado con el motivo; 5 contraseñas malas = bloqueo de 5 min | OK |
 | Admin CDMX | Resumen de su zona; aviso del cambio del gerente con **Ver día** (ve el cambio guardado); historial; Usuarios | OK |
-| Super Admin | Resumen de 50 tiendas 2026 y 2030 al instante (precalculadas); Ver como; Reglas legales; Datos con una tienda nueva (T051) y +40% de tráfico: se recalcula y T051 aparece con horario legal y pico cubierto | OK |
+| Super Admin | Resumen de 50 tiendas 2026 y 2030 al instante; Ver como; Reglas legales | OK |
+| Super Admin · Datos | Semana 11 de 2027 (14–20 mar): se suben tráfico y ventas de las 12 tiendas CDMX con +40%. T001 pasa de $35,159 (27.5%) a $27,006 (19.7%) con el pico cubierto; T002 (fuera del archivo) queda en $38,147 y abre al instante; "Volver a los archivos originales" regresa T001 a $35,159 exacto. Una tienda nueva (T051) subida en Tiendas + Plantilla aparece en el selector con horario legal | OK |
 | Celular (390 px) | Sin scroll horizontal; cifras en 2 columnas | OK |
-| Automáticas | 99 pruebas (`pytest jornada40/tests`), incluidas solver determinista, calificación por área y respaldo en GitHub simulado | Pasan |
+| Automáticas | 103 pruebas (`pytest jornada40/tests`), incluidas solver determinista, calificación por área y respaldo en GitHub simulado | Pasan |

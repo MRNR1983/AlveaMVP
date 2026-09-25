@@ -13,8 +13,8 @@ estas cifras son las mismas en la app en línea y en cualquier reinicio.
 | ~50 tiendas, ~80 FTE por tienda, domingo a domingo | 50 tiendas × 80 personas; semana domingo–sábado | Cumple |
 | Demostrar al menos 8% de ahorro en costo laboral total (horas extra y sobrestaffing evitados) | 2026: **29.0% en la red ($1,889,625), 50 de 50 tiendas ≥ 8%** (mínimo 22.9%). 2030: **21.7% ($1,519,383), 50 de 50 ≥ 8%** (mínimo 14.9%). Horario → "De dónde sale el ahorro" desglosa horas extra evitadas y gente de más evitada | Cumple |
 | Sin caer en subdotación en horas pico | Cobertura pico como restricción dura, contada por área. **0 horas pico sin cubrir en las 50 tiendas, en 2026 y en 2030** | Cumple |
-| Datos definidos por el candidato (sintéticos o públicos) | Datos sintéticos con marca ficticia, calibrados (quincena, Buen Fin, Navidad, regreso a clases) | Cumple |
-| Automatizada: cualquiera del equipo la corre con datos de una tienda nueva sin operación manual | Página Datos: descargar formato → subir CSV → la app recalcula sola | Cumple (hoy la página Datos es solo para HQ) |
+| Datos definidos por el candidato (sintéticos o públicos) | Archivos en `archivos/` (tiendas, plantilla y, por semana, tráfico, ventas y ausentismo), marca ficticia, con temporadas (quincena, Buen Fin, Navidad, regreso a clases) | Cumple |
+| Automatizada: cualquiera del equipo la corre con datos de una tienda nueva sin operación manual | Página Datos: se sueltan los CSV (tienda nueva en Tiendas + Plantilla, sus semanas en Tráfico/Ventas/Ausentismo); Alvea los reconoce, los cruza por semana y recalcula solo lo que cambió | Cumple (la página Datos es de HQ) |
 | Stack y formato libres ("lo que llevarías a un cliente el lunes") | App web en línea (Streamlit), roles por usuario, descargas CSV/TXT | Cumple |
 | Trazabilidad de restricciones | Página Reglas legales: tabla año por año y trazabilidad de cada regla contra el Decreto, con lo pendiente de validar | Cumple |
 | Entregable 1 — herramienta funcionando, accesible, reproducible, de extremo a extremo sin el candidato | alveamvp.streamlit.app + credenciales en README + repo público | Cumple |

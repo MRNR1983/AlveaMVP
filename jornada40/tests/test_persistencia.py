@@ -25,7 +25,10 @@ def test_sube_y_restaura(tmp_path, monkeypatch):
         return _Resp(200, {"content": {"sha": sha}})
 
     def get(url, params=None, headers=None, timeout=None):
-        nombre = url.rsplit("/", 1)[1]
+        if "/git/trees/" in url:
+            return _Resp(200, {"tree": [{"path": f"data/{n}", "type": "blob", "sha": s, "url": f"blob:{n}"}
+                                        for n, (s, _) in remoto.items()]})
+        nombre = url.split(":", 1)[1] if url.startswith("blob:") else url.rsplit("/", 1)[1]
         if nombre not in remoto:
             return _Resp(404)
         sha, datos = remoto[nombre]

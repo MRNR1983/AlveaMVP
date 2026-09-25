@@ -24,7 +24,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from jornada40 import (auditoria, calendario, costos_ahorro, datos_sinteticos, demanda_personal,
+from jornada40 import (archivos, auditoria, calendario, costos_ahorro, demanda_personal,
                         escenario_base, notificaciones, optimizador, persistencia, precalculado, reglas, usuarios, vista_red)
 from jornada40 import semana as semana_calc
 
@@ -104,53 +104,46 @@ def mxn(v: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Datos (sintéticos por semana, o los que suba HQ)
+# Datos: archivos (ver jornada40/archivos.py)
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=8)
+def _catalogos(firma: tuple) -> dict[str, pd.DataFrame]:
+    return {"tiendas": archivos.leer("tiendas"), "plantilla": archivos.leer("plantilla")}
+
+
 def datos_fijos() -> dict[str, pd.DataFrame]:
-    tiendas = datos_sinteticos.generar_tiendas(seed=42)
-    return {"tiendas": tiendas, "plantilla": datos_sinteticos.generar_plantilla(tiendas, seed=42)}
+    """Tiendas y plantilla vigentes (de los archivos)."""
+    return _catalogos(archivos.firma(SEMANA_MIN)[:2])
 
 
 @st.cache_data(show_spinner=False, max_entries=60)
-def datos_semana_ejemplo(domingo: date) -> dict[str, pd.DataFrame]:
-    f = datos_fijos()
-    return datos_sinteticos.generar_semana(f["tiendas"], f["plantilla"], domingo, seed=42)
-
-
-def _normalizar_fechas(df: pd.DataFrame) -> pd.DataFrame:
-    if "fecha" in df.columns:
-        df = df.copy()
-        df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
-    return df
+def _leer_semana(domingo: date, firma: tuple) -> dict[str, pd.DataFrame]:
+    return archivos.leer_semana(domingo)
 
 
 def datos_semana(domingo: date) -> dict[str, pd.DataFrame]:
-    """Las 5 tablas para la semana. Si HQ subió archivos propios, esos ganan."""
-    subidos = st.session_state.get("datos_subidos", {})
-    fijos = datos_fijos()
-    base = {"tiendas": subidos.get("tiendas", fijos["tiendas"]),
-            "plantilla": subidos.get("plantilla", fijos["plantilla"])}
-    sabado = domingo + timedelta(days=6)
-    ejemplo = None
-    for n in ("trafico", "ventas", "ausentismo"):
-        if n in subidos:
-            df = _normalizar_fechas(subidos[n])
-            base[n] = df[(df["fecha"] >= domingo) & (df["fecha"] <= sabado)]
-        else:
-            ejemplo = ejemplo or datos_semana_ejemplo(domingo)
-            base[n] = _normalizar_fechas(ejemplo[n])
-    return base
+    """Los 5 archivos de esa semana (se vuelven a leer solo si alguno cambió)."""
+    return _leer_semana(domingo, archivos.firma(domingo))
+
+
+@st.cache_data(show_spinner=False, max_entries=60)
+def _huellas(domingo: date, firma: tuple) -> dict[str, str]:
+    d = datos_semana(domingo)
+    return {t: archivos.huella(d, t) for t in d["tiendas"]["tienda_id"]}
+
+
+def huella_de(tienda_id: str, domingo: date) -> str:
+    return _huellas(domingo, archivos.firma(domingo)).get(tienda_id, "")
 
 
 @st.cache_data(show_spinner=False, max_entries=400)
-def calcular_semana_tienda(tienda_id: str, domingo: date, version_datos: int,
+def calcular_semana_tienda(tienda_id: str, domingo: date, huella: str,
                            version_modelo: str = VERSION_MODELO) -> dict:
     """Base (cómo se programa hoy) + propuesta del optimizador + techo, 1 tienda, 1 semana.
-    Con los datos de ejemplo usa la semana precalculada si viene en el repo."""
+    La huella identifica sus archivos: si ya se resolvió con esos mismos archivos, se abre al instante."""
     reporte, _, _ = semana_calc.calcular(tienda_id, domingo, datos_semana(domingo), TIEMPO_LIMITE_SEG,
-                                         version_modelo, usar_precalculado=(version_datos == 0))
+                                         version_modelo, huella=huella)
     return reporte
 
 
@@ -178,18 +171,13 @@ def registro_calculadas() -> set:
 
 
 def marcar_calculada(tienda_id: str, domingo: date) -> None:
-    registro_calculadas().add((tienda_id, domingo, version_datos(), VERSION_MODELO))
-    st.session_state.setdefault("_semanas_vistas", set()).add((tienda_id, domingo))
+    registro_calculadas().add((tienda_id, domingo, huella_de(tienda_id, domingo), VERSION_MODELO))
 
 
 def esta_calculada(tienda_id: str, domingo: date) -> bool:
-    if (tienda_id, domingo, version_datos(), VERSION_MODELO) in registro_calculadas():
-        return True
-    return version_datos() == 0 and precalculado.cargar_existe(VERSION_MODELO, tienda_id, domingo)
-
-
-def version_datos() -> int:
-    return int(st.session_state.get("version_datos", 0))
+    h = huella_de(tienda_id, domingo)
+    return bool(h) and ((tienda_id, domingo, h, VERSION_MODELO) in registro_calculadas()
+                        or precalculado.existe(VERSION_MODELO, tienda_id, domingo, h))
 
 
 # ---------------------------------------------------------------------------
@@ -249,13 +237,8 @@ def registrar(tipo: str, detalle: str = "", alcance: tuple[str, str | None] | No
     auditoria.registrar_evento(DATA_DIR, a["usuario"], a["rol"], tipo_alc, valor_alc, tipo, detalle=detalle)
 
 
-def tiendas_actuales() -> pd.DataFrame:
-    """Catálogo de tiendas vigente: el que subió HQ en Datos, o el de ejemplo."""
-    return st.session_state.get("datos_subidos", {}).get("tiendas", datos_fijos()["tiendas"])
-
-
 def tiendas_visibles(auth_: dict) -> pd.DataFrame:
-    tiendas = tiendas_actuales()
+    tiendas = datos_fijos()["tiendas"]
     if auth_["rol"] == "manager":
         return tiendas[tiendas["tienda_id"] == auth_["tienda_id"]]
     if auth_["rol"] == "admin":
@@ -293,9 +276,9 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(.sb-gru
 .sb-grupo { display: block; min-height: 28px; box-sizing: border-box; }
 /* cargador de archivos en español */
 [data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
-[data-testid="stFileUploaderDropzone"] button { font-size: 0 !important; }
-[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] { display: none !important; }
-[data-testid="stFileUploaderDropzone"] button::after { content: "Elegir CSV"; font-size: 13.5px; }
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] { font-size: 0 !important; }
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] { display: none !important; }
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"]::after { content: "Elegir archivos"; font-size: 13.5px; }
 .sb-marca { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; padding: 2px 10px 0; }
 .sb-sub { font-size: 12px; color: var(--ink-2); padding: 0 10px 18px; }
 .sb-grupo { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
@@ -470,7 +453,7 @@ def pill_regimen(domingo: date) -> str:
 
 @st.cache_resource
 def _restaurar_datos() -> list[str]:
-    """Una vez por arranque: trae de GitHub el historial, avisos, cambios y cuentas."""
+    """Una vez por arranque: trae de GitHub el historial, avisos, cambios, cuentas y archivos subidos."""
     return persistencia.restaurar(DATA_DIR)
 
 
@@ -514,7 +497,7 @@ if _fila_actual is None or not _fila_actual["activo"]:
     st.error("Esta cuenta fue desactivada. Pide a HQ que la reactive.")
     st.stop()
 
-tiendas_df = tiendas_actuales()
+tiendas_df = datos_fijos()["tiendas"]
 
 # ---------------------------------------------------------------------------
 # Estado compartido: semana activa, vista del calendario
@@ -574,7 +557,7 @@ def dialogo_legal() -> None:
         "**Para qué.** Para mandarte avisos y para que tu admin vea quién cambió qué.\n\n"
         "**Cookies.** Solo las necesarias para mantener tu sesión. Sin publicidad ni analítica de terceros.\n\n"
         "**Tus datos.** Pide a HQ corregir o borrar tu correo cuando quieras.\n\n"
-        "**Términos.** Alvea es un prototipo con datos de ejemplo. Propone horarios; la decisión "
+        "**Términos.** Alvea es un prototipo. Propone horarios con los archivos cargados; la decisión "
         "y la responsabilidad legal de cada horario son de la empresa. Una regla (horas extra al "
         "triple) está pendiente de validar con un abogado laboral.")
 
@@ -732,9 +715,20 @@ def barra_fechas(titulo: str, paso: str, clave: str, extra=None, domingo: date |
             extra()
 
 
+def faltan_archivos(domingo: date) -> bool:
+    """Si la semana no tiene archivos completos, lo dice y regresa True."""
+    d = datos_semana(domingo)
+    if archivos.semana_completa(d):
+        return False
+    faltan = [archivos.TIPOS[t]["nombre"] for t in ("tiendas", "plantilla", "trafico", "ventas") if d[t].empty]
+    aviso(f"<b>Faltan archivos para la semana {fmt_rango_semana(domingo)}:</b> {', '.join(faltan)}. "
+          "Súbelos en Datos.", "ojo")
+    return True
+
+
 def obtener_semana(tienda_id: str, domingo: date) -> dict:
     with st.spinner(f"Armando el horario de la semana {fmt_rango_semana(domingo)}…"):
-        return calcular_semana_tienda(tienda_id, domingo, version_datos())
+        return calcular_semana_tienda(tienda_id, domingo, huella_de(tienda_id, domingo))
 
 
 # ---------------------------------------------------------------------------
@@ -813,12 +807,11 @@ def pagina_horario() -> None:
 
 
 def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
-    calculadas = {k[1] for k in registro_calculadas()
-                  if k[0] == tienda_id and k[2:] == (version_datos(), VERSION_MODELO)}
     resumen: dict = {}
     for dom in {calendario.semana_de(f)[0] for fila in calendario.matriz_mes(anio, mes) for f in fila if f}:
-        if dom in calculadas:
-            rep = calcular_semana_tienda(tienda_id, dom, version_datos())
+        if SEMANA_MIN <= dom <= FIN_HORIZONTE and archivos.semana_completa(datos_semana(dom)) \
+                and esta_calculada(tienda_id, dom):
+            rep = obtener_semana(tienda_id, dom)
             if rep["status"] != "INFEASIBLE":
                 for r in resumen_diario(rep, turnos_vigentes(rep, tienda_id)).itertuples(index=False):
                     resumen[r.fecha] = r
@@ -1005,6 +998,8 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
 
 
 def vista_semana(tienda_id: str, semana: date) -> None:
+    if faltan_archivos(semana):
+        return
     rep = obtener_semana(tienda_id, semana)
     marcar_calculada(tienda_id, semana)
     if rep["status"] == "INFEASIBLE":
@@ -1082,6 +1077,8 @@ def grafica_cobertura(rep: dict, turnos_dia: pd.DataFrame, f: date, faltas: dict
 
 def vista_dia(tienda_id: str, f: date) -> None:
     semana = calendario.semana_de(f)[0]
+    if faltan_archivos(semana):
+        return
     rep = obtener_semana(tienda_id, semana)
     marcar_calculada(tienda_id, semana)
     if rep["status"] == "INFEASIBLE":
@@ -1262,6 +1259,8 @@ def pagina_resumen() -> None:
                else f"zona {usuarios.ZONAS[auth['zona_id']]['nombre']}")
     encabezado("Resumen", f"Ahorro de la semana en {alcance} · {len(visibles)} tiendas.")
     barra_fechas(f"{fmt_rango_semana(semana)}", "semana", "res", domingo=semana)
+    if faltan_archivos(semana):
+        return
     ids = list(visibles["tienda_id"])
     listas = [t for t in ids if esta_calculada(t, semana)]
     faltan = [t for t in ids if t not in listas]
@@ -1278,13 +1277,13 @@ def pagina_resumen() -> None:
             barra = st.progress(0.0)
             for i, t in enumerate(faltan):
                 barra.progress(i / len(faltan), text=f"Tienda {t} ({i + 1} de {len(faltan)})")
-                calcular_semana_tienda(t, semana, version_datos())
+                obtener_semana(t, semana)
                 marcar_calculada(t, semana)
             registrar("red_calculada", f"{len(faltan)} tiendas, semana {semana.isoformat()}")
             st.rerun()
     if not listas:
         return
-    resultados = {t: calcular_semana_tienda(t, semana, version_datos()) for t in listas}
+    resultados = {t: obtener_semana(t, semana) for t in listas}
     cons = vista_red.consolidar_resultados(resultados, tiendas_df)
     rk = cons["ranking_tiendas"]
     n_ok = int(rk["cumple_minimo_8pct"].sum())
@@ -1446,52 +1445,78 @@ def pagina_reglas() -> None:
 
 
 def pagina_datos() -> None:
-    encabezado("Datos", "Usa tus propios archivos.")
-    f = datos_fijos()
-    ej = datos_semana_ejemplo(SEMANA_MIN)
-    ejemplos = {"tiendas": f["tiendas"], "plantilla": f["plantilla"], "trafico": ej["trafico"],
-                "ventas": ej["ventas"], "ausentismo": ej["ausentismo"]}
-    nombres = {"tiendas": "Tiendas", "plantilla": "Plantilla", "trafico": "Tráfico por hora",
-               "ventas": "Ventas por hora", "ausentismo": "Ausentismo"}
-    st.markdown("<div class='seccion'>1 · Descarga el formato</div>", unsafe_allow_html=True)
-    cols = st.columns(5)
-    for c, (k, df) in zip(cols, ejemplos.items()):
-        c.download_button(nombres[k], df.to_csv(index=False).encode("utf-8"), f"{k}_formato.csv", "text/csv",
-                          icon=":material/download:", width="stretch", help=", ".join(df.columns))
-    st.markdown("<div class='seccion'>2 · Sube tus archivos</div>", unsafe_allow_html=True)
-    subidos = {}
-    cols = st.columns(5)
-    for c, k in zip(cols, ejemplos):
-        a = c.file_uploader(nombres[k], type=["csv"], key=f"up_{k}")
-        if a is not None:
-            try:
-                df_sub = pd.read_csv(a)
-            except Exception:
-                c.error("No se pudo leer. Guárdalo como CSV (separado por comas).")
-                continue
-            faltan = [col for col in ejemplos[k].columns if col not in df_sub.columns]
-            if faltan:
-                c.error(f"Faltan columnas: {', '.join(faltan)}. Usa el formato del paso 1.")
-            elif df_sub.empty:
-                c.error("El archivo está vacío.")
-            else:
-                subidos[k] = df_sub
-    c1, c2, _ = st.columns([1, 1, 2])
-    if c1.button("Usar mis archivos", type="primary", disabled=not subidos, width="stretch"):
-        st.session_state.setdefault("datos_subidos", {}).update(subidos)
-        st.session_state["version_datos"] = version_datos() + 1
-        st.session_state["_semanas_vistas"] = set()
-        registrar("datos_cargados", ", ".join(subidos))
+    encabezado("Datos", "Los archivos con los que Alvea arma los horarios. Lo que subas cambia los horarios "
+                        "de todos.")
+    st.markdown("<div class='seccion'>Archivos en uso</div>", unsafe_allow_html=True)
+    st.dataframe(archivos.inventario(), hide_index=True, width="stretch")
+
+    st.markdown("<div class='seccion'>Subir archivos</div>", unsafe_allow_html=True)
+    st.caption("Uno o varios CSV. Alvea reconoce cuál es por sus columnas y la semana por sus fechas; "
+               "cada fila reemplaza solo lo mismo (misma tienda y día, mismo empleado y día) y lo demás se queda.")
+    n_up = st.session_state.get("_n_upload", 0)
+    subidos = st.file_uploader("Archivos", type=["csv", "gz"], accept_multiple_files=True,
+                               key=f"up_{n_up}", label_visibility="collapsed")
+    listos = []
+    for f in subidos or []:
+        try:
+            df = pd.read_csv(f, compression="gzip" if f.name.endswith(".gz") else None)
+        except Exception:
+            aviso(f"<b>{f.name}</b>: no se pudo leer. Guárdalo como CSV (separado por comas).", "mal")
+            continue
+        tipo = archivos.detectar_tipo(df)
+        error = archivos.validar(tipo, df) if tipo else "sus columnas no corresponden a ningún archivo"
+        if error:
+            aviso(f"<b>{f.name}</b>: {error}.", "mal")
+            continue
+        info = archivos.TIPOS[tipo]
+        if info["semanal"]:
+            fechas = pd.to_datetime(df["fecha"]).dt.date
+            doms = sorted({archivos.domingo_de(x) for x in fechas})
+            quien = df["tienda_id"].nunique() if "tienda_id" in df.columns else df["empleado_id"].nunique()
+            detalle = (f"{fechas.nunique()} días · {fmt_rango_semana(doms[0])}"
+                       + (f" a {fmt_rango_semana(doms[-1])}" if len(doms) > 1 else "")
+                       + f" · {quien:,} {'tiendas' if 'tienda_id' in df.columns else 'personas'}")
+        else:
+            detalle = f"{len(df):,} filas"
+        aviso(f"<b>{f.name}</b> → {info['nombre']} · {detalle}", "bien")
+        listos.append((f.name, tipo, df))
+    if listos and st.button(f"Aplicar {len(listos)} archivo{'s' if len(listos) != 1 else ''}", type="primary"):
+        orden = list(archivos.TIPOS)   # catálogos primero: el ausentismo usa la plantilla
+        hechos = []
+        for nombre_f, tipo, df in sorted(listos, key=lambda x: orden.index(x[1])):
+            r = archivos.cruzar(tipo, df)
+            semanas = r["semanas"]
+            hechos.append(f"{archivos.TIPOS[tipo]['nombre']}: {r['filas']:,} filas"
+                          + (f", {len(semanas)} semana{'s' if len(semanas) != 1 else ''}" if semanas else "")
+                          + f" ({r['reemplazadas']:,} reemplazadas)")
+        registrar("datos_cargados", "; ".join(hechos))
+        st.session_state["_n_upload"] = n_up + 1
+        st.session_state["_datos_hechos"] = hechos
         st.rerun()
-    if st.session_state.get("datos_subidos") and c2.button("Volver al ejemplo", width="stretch"):
-        st.session_state["datos_subidos"] = {}
-        st.session_state["version_datos"] = version_datos() + 1
-        st.session_state["_semanas_vistas"] = set()
-        registrar("datos_restablecidos")
-        st.rerun()
-    en_uso = st.session_state.get("datos_subidos")
-    aviso(f"<b>En uso:</b> tus archivos de {', '.join(nombres[k].lower() for k in en_uso)}; el resto, ejemplo." if en_uso
-          else "<b>En uso:</b> datos de ejemplo.", "bien")
+    if st.session_state.get("_datos_hechos"):
+        aviso("<b>Listo.</b> " + " · ".join(st.session_state.pop("_datos_hechos"))
+              + ". Las tiendas y semanas que cambiaron se recalculan al abrirlas.", "bien")
+
+    st.markdown("<div class='seccion'>Descargar archivos</div>", unsafe_allow_html=True)
+    sem = st.date_input("Semana", value=st.session_state["semana"], min_value=SEMANA_MIN,
+                        max_value=FIN_HORIZONTE, format="DD/MM/YYYY")
+    dom = archivos.domingo_de(sem)
+    cols = st.columns(5)
+    for c, (tipo, info) in zip(cols, archivos.TIPOS.items()):
+        df = archivos.formato(tipo, dom)
+        etiqueta = info["nombre"] + (f" · {dom.day:02d}/{dom.month:02d}" if info["semanal"] else "")
+        c.download_button(etiqueta, df.to_csv(index=False).encode("utf-8"),
+                          f"{tipo}_{dom.isoformat()}.csv" if info["semanal"] else f"{tipo}.csv", "text/csv",
+                          icon=":material/download:", width="stretch", help=", ".join(info["columnas"]))
+
+    if any(p.is_file() for p in archivos.SUBIDOS.rglob("*")) if archivos.SUBIDOS.exists() else False:
+        with st.expander("Volver a los archivos originales"):
+            st.caption("Quita todo lo que se ha subido. Los horarios vuelven a los archivos con los que arrancó Alvea.")
+            if st.checkbox("Sí, quitar lo subido", key="conf_restaurar") and st.button("Quitar lo subido"):
+                n = archivos.restaurar_originales()
+                registrar("datos_restablecidos", f"{n} archivos")
+                st.session_state.pop("conf_restaurar", None)
+                st.rerun()
 
 
 RUTAS = {"Resumen": pagina_resumen, "Horario": pagina_horario,

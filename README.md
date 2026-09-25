@@ -2,8 +2,8 @@
 
 PMV para el reto técnico de ALVENA/AIvena (Head of Product and Technology):
 una herramienta que arma el horario semanal de personal para 50 tiendas
-de un autoservicio genérico ("Autoservicio MX", marca ficticia, datos
-100% sintéticos), respeta la jornada legal mexicana (incluida la reforma
+de un autoservicio genérico ("Autoservicio MX", marca ficticia), trabaja
+solo con archivos (tiendas, plantilla, tráfico, ventas, ausentismo), respeta la jornada legal mexicana (incluida la reforma
 de 40 horas, DOF 01-05-2026) y cuantifica en pesos el ahorro frente a
 cómo se programaría hoy.
 
@@ -41,8 +41,8 @@ docker build -t jornada40 .
 docker run -p 8501:8501 jornada40
 ```
 
-Abre `http://localhost:8501`. Los datos sintéticos se generan solos
-(por semana, al abrirla) — no hay pasos manuales adicionales.
+Abre `http://localhost:8501`. Los archivos de arranque vienen en
+`archivos/` — no hay pasos manuales adicionales.
 
 > Nota: este Dockerfile se construyó siguiendo la práctica estándar y se
 > verificó ejecutando la app directamente con Python en este entorno
@@ -73,7 +73,8 @@ Comparación punto por punto contra el PDF del reto: [`docs/comparacion_pdf.md`]
 ```
 jornada40/
   reglas.py            Motor de reglas legales por vigencia (48 h en 2026 -> 40 h en 2030)
-  datos_sinteticos.py  Dataset sintético: 50 tiendas, plantilla fija y datos por semana bajo demanda
+  archivos.py          Los datos son archivos: lectura por semana, subir = cruzar por semana/tienda, huella
+  datos_sinteticos.py  Generador de los archivos de arranque (lo usa scripts/generar_archivos.py)
   demanda_personal.py  Tráfico/ventas -> personas requeridas (Erlang C + carga/productividad + calibración)
   escenario_base.py    Horario base: rol fijo rotativo + horas extra (cómo se programa hoy)
   optimizador.py       CP-SAT (OR-Tools): cada persona, cada día -> 1 de 4 turnos fijos o descanso
@@ -89,7 +90,10 @@ jornada40/
   simulacros.py        (sin interfaz desde 24-sep-2026; se conserva con sus pruebas)
   tests/               pruebas unitarias (pytest)
 app.py                 Interfaz Streamlit
-scripts/precalcular.py Precalcula semanas de demo (50 tiendas) -> precalculado/<versión>/
+archivos_para_subir/   Un juego de archivos para probar Datos (semana 11 de 2027, CDMX +40%)
+archivos/              Archivos de arranque: tiendas.csv, plantilla.csv y, por semana, trafico/ ventas/ ausentismo/
+scripts/generar_archivos.py  Escribe archivos/ (sep 2026 a dic 2030)
+scripts/precalcular.py Precalcula semanas (todas las tiendas de los archivos) -> precalculado/<versión>/
 precalculado/          Semanas de demo ya resueltas (2026 y 2030): abren al instante
 docs/
   manual.md            Cómo se calcula, límites y lo que se probó (el uso está en tutoriales/)
@@ -135,8 +139,10 @@ Checklist de publicación (privacidad, seguridad, móvil, contraste, etc.): [`do
   caja (Erlang C), factores de carga por ticket y productividad por rol —
   todos en `CONFIG` al inicio del archivo, marcados como **SUPUESTOS —
   CALIBRAR CON DATOS REALES EN FASE 1**.
-- **Datos sintéticos** (`datos_sinteticos.py`): tasas de conversión, ticket
-  promedio, rangos salariales y multiplicadores de temporada, en `CONFIG`.
+- **Archivos de arranque** (`archivos/`, escritos por `datos_sinteticos.py`):
+  tasas de conversión, ticket promedio, rangos salariales y temporadas en
+  `CONFIG`. Cualquier archivo con las mismas columnas los reemplaza desde
+  la página Datos.
 - **Valor hora**: `salario_diario / (jornada_horas_semana_vigente / 6)` —
   a menor jornada legal, mayor valor hora (no se puede bajar el salario
   semanal, Transitorio 7 del Decreto).
@@ -145,8 +151,8 @@ Checklist de publicación (privacidad, seguridad, móvil, contraste, etc.): [`do
   (`costos_ahorro.py`, multiplicador 3x documentado como convención de
   negocio del PMV, no cifra legal).
 
-**Calibración (resuelta 24-sep-2026)**: la demanda que sale del tráfico
-sintético solo captura trabajo ligado a tickets y era 30–55% de la
+**Calibración (resuelta 24-sep-2026)**: la demanda que sale del archivo de
+tráfico solo captura trabajo ligado a tickets y era 30–55% de la
 capacidad de 80 FTE, por eso el ahorro salía en 50–70% (irreal). Ahora
 `demanda_personal.CONFIG["factor_calibracion"]` escala la demanda por
 rol y formato bajo un supuesto explícito: **la plantilla actual opera al
@@ -178,8 +184,8 @@ texto del decreto y la LFT vigente.
   la persona trabajadora y la aprobación son responsabilidad del cliente).
 - Integración con nómina real y con el registro electrónico de jornada
   (art. 132 fr. XXXIV) — el PMV solo exporta CSV.
-- Pronóstico de demanda con machine learning (el dataset es sintético con
-  semilla fija).
+- Pronóstico de demanda con machine learning (hoy la demanda sale del
+  archivo de tráfico de cada semana).
 - Día de jornada electoral del art. 74 fr. IX (depende de un calendario
   electoral externo).
 - Turnos nocturnos/mixtos (7 / 7.5 h): el catálogo usa turnos de 8 h
@@ -205,10 +211,24 @@ queda en caché. Para agregar semanas: `python scripts/precalcular.py
 AAAA-MM-DD ...` (domingos) y subir la carpeta. Si cambia el modelo, se sube
 `VERSION_MODELO` y se vuelve a precalcular.
 
+## Los datos son archivos
+
+Cinco archivos: `tiendas.csv`, `plantilla.csv` y, por semana (domingo a
+sábado), `trafico`, `ventas` y `ausentismo`. Los de arranque están en
+`archivos/`; lo que se sube en la página **Datos** (solo HQ) se guarda en
+`data/archivos/` y tapa a los de arranque, para todos los usuarios.
+
+Subir un archivo lo **cruza** con lo que ya hay: Alvea reconoce cuál es por
+sus columnas y la semana por sus fechas; cada fila reemplaza solo lo mismo
+(misma tienda y día; mismo empleado y día; misma tienda o empleado en los
+catálogos) y lo demás se queda. Cada tienda-semana tiene una **huella** de
+sus archivos: si cambia, esa tienda se recalcula; si no, abre al instante.
+"Volver a los archivos originales" quita todo lo subido.
+
 ## Datos que sobreviven reinicios
 
 Streamlit Cloud borra el disco al reiniciar. Historial, avisos, cambios de
-turno y estado de las cuentas se respaldan en la rama `datos-app` del repo y
+turno, estado de las cuentas y archivos subidos se respaldan en la rama `datos-app` del repo y
 se restauran al arrancar. Se activa con un secreto en Streamlit Cloud
 (Settings → Secrets):
 

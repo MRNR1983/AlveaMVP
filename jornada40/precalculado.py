@@ -4,7 +4,9 @@ El optimizador tarda ~25 s por tienda y semana. Para la demo (semanas de
 2026 y de 2030) los resultados se precalculan con ``scripts/precalcular.py``
 y viajan en ``precalculado/<version_modelo>/``: la app los abre al instante y,
 como el solver es determinista, dan exactamente lo mismo que calcularlos.
-Solo aplican con los datos de ejemplo (si HQ sube sus archivos, se recalcula).
+Cada resultado se guarda con la *huella* de los archivos de esa tienda y
+semana: si alguien sube un archivo que la cambia, la huella ya no coincide y
+esa tienda se recalcula; las demás siguen al instante.
 """
 from __future__ import annotations
 
@@ -18,8 +20,8 @@ from jornada40 import optimizador
 CARPETA = Path(__file__).resolve().parent.parent / "precalculado"
 
 
-def _ruta(version: str, tienda_id: str, domingo: date) -> Path:
-    return CARPETA / version / f"{domingo.isoformat()}_{tienda_id}.pkl.gz"
+def _ruta(version: str, tienda_id: str, domingo: date, huella: str) -> Path:
+    return CARPETA / version / f"{domingo.isoformat()}_{tienda_id}_{huella}.pkl.gz"
 
 
 def _compactar(res: dict) -> dict:
@@ -32,19 +34,19 @@ def _expandir(res: dict) -> dict:
     return res
 
 
-def guardar(version: str, tienda_id: str, domingo: date, propuesta: dict, techo: dict) -> None:
-    ruta = _ruta(version, tienda_id, domingo)
+def guardar(version: str, tienda_id: str, domingo: date, huella: str, propuesta: dict, techo: dict) -> None:
+    ruta = _ruta(version, tienda_id, domingo, huella)
     ruta.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(ruta, "wb") as f:
         pickle.dump({"propuesta": _compactar(propuesta), "techo": _compactar(techo)}, f)
 
 
-def cargar_existe(version: str, tienda_id: str, domingo: date) -> bool:
-    return _ruta(version, tienda_id, domingo).exists()
+def existe(version: str, tienda_id: str, domingo: date, huella: str) -> bool:
+    return _ruta(version, tienda_id, domingo, huella).exists()
 
 
-def cargar(version: str, tienda_id: str, domingo: date) -> tuple[dict, dict] | None:
-    ruta = _ruta(version, tienda_id, domingo)
+def cargar(version: str, tienda_id: str, domingo: date, huella: str) -> tuple[dict, dict] | None:
+    ruta = _ruta(version, tienda_id, domingo, huella)
     if not ruta.exists():
         return None
     try:
