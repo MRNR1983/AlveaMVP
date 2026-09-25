@@ -127,6 +127,8 @@ docs/
 
 Método, límites y pruebas en [`docs/manual.md`](docs/manual.md).
 
+**Video tutorial (5:36):** [`docs/tutoriales/Alvea_tutorial.mp4`](docs/tutoriales/Alvea_tutorial.mp4).
+
 **Tutoriales por rol** (con capturas de la app en línea): [Gerente](docs/tutoriales/gerente.md) · [Admin de zona](docs/tutoriales/admin.md) · [Super Admin](docs/tutoriales/sadmin.md).
 
 Checklist de publicación (privacidad, seguridad, móvil, contraste, etc.): [`docs/checklist_publicacion.md`](docs/checklist_publicacion.md).

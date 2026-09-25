@@ -21,6 +21,23 @@ estas cifras son las mismas en la app en línea y en cualquier reinicio.
 | Entregable 2 — evidencia del proceso: repo, documentación, capturas, supuestos, decisiones, nota de trazabilidad, registro de herramientas agénticas | README, docs/tutoriales/ (con capturas), docs/manual.md, docs/registro_agentic.md, Reglas legales | Cumple |
 | Entregable 3 — demo de 45 min con CFO/COO | docs/guion_demo.md | Listo |
 
+## Año por año (verificado sobre los horarios que arma Alvea)
+
+Semana de septiembre de cada año (la que abre el salto de año). 2026 y 2030: las 50 tiendas; 2027–2029: muestra de 5 tiendas.
+
+| Año | Jornada legal | Horas extra permitidas (dobles + triples) | Máx. horas de una persona | Personas arriba de la jornada | Ahorro (mín.–promedio) | Horas pico sin cubrir |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2026 | 48 h | 9 + 4 | 54 | 20 de 4,000 | 22.9% – 29.0% | 0 |
+| 2027 | 46 h | 9 + 4 | 48 | 5 de 400 | 26.8% – 28.8% | 0 |
+| 2028 | 44 h | 10 + 4 | 52 | 25 de 400 | 20.6% – 23.6% | 14 (T037, T048) |
+| 2029 | 42 h | 11 + 4 | 48 | 47 de 400 | 21.8% – 25.3% | 14 (T037, T048) |
+| 2030 | 40 h | 12 + 4 | 52 | 415 de 4,000 | 14.9% – 21.7% | 0 |
+
+- La jornada baja 2 h por año y la regla sale de la fecha de la semana: una semana que cruza de año ya usa el tope nuevo (27-dic-2026 → 46 h; 30-dic-2029 → 40 h).
+- Nadie trabaja más de 6 días y las horas extra de cada persona nunca pasan el tope legal de ese año.
+- Los faltantes de 2028–2029 son de capacidad, no del modelo: caen en sábado en Perecederos y Piso, con toda la gente disponible del área ya trabajando y el tope semanal usado. La app los muestra en **Hora pico**.
+- **"Tope de 40 horas" del PDF en 2030.** Se aplica como jornada ordinaria de 40 h + horas extra legales pagadas al doble (lo acordado). Prueba con tope duro de 40 h sin extra (10 tiendas): ahorro 14–20%, pero 7 de 10 tiendas dejan 2–12 h de pico sin gente. Con la plantilla actual, cubrir el pico a 40 h exige ese tiempo extra legal (o más gente).
+
 ## Riesgos que conviene decir en la demo
 
 - La jornada de 40 h es gradual por ley: en 2026 el tope es 48 h. La
