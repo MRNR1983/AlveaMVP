@@ -35,7 +35,7 @@ Semana de septiembre de cada año (la que abre el salto de año), las 50 tiendas
 
 - La jornada baja 2 h por año y la regla sale de la fecha de la semana: una semana que cruza de año ya usa el tope nuevo (27-dic-2026 → 46 h; 30-dic-2029 → 40 h).
 - Nadie trabaja más de 6 días y las horas extra de cada persona nunca pasan el tope legal de ese año.
-- Los faltantes de 2028–2029 (1–2% de las horas pico de esas semanas) son de capacidad: caen en sábado en Perecederos y Piso, con toda la gente disponible del área ya trabajando y el tope semanal usado. La app los muestra en **Hora pico**.
+- Los faltantes de 2028–2029 (menos de 0.1% de las ~70,000 horas-persona pico de la red esa semana) son de capacidad: caen en sábado en Perecederos y Piso, con toda la gente disponible del área ya trabajando y el tope semanal usado. La app los muestra en **Hora pico**.
 - **"Tope de 40 horas" del PDF en 2030.** Se aplica como jornada ordinaria de 40 h + horas extra legales pagadas al doble (lo acordado). Prueba con tope duro de 40 h sin extra (10 tiendas): ahorro 14–20%, pero 7 de 10 tiendas dejan 2–12 h de pico sin gente. Con la plantilla actual, cubrir el pico a 40 h exige ese tiempo extra legal (o más gente).
 
 ## Riesgos que conviene decir en la demo
