@@ -89,6 +89,7 @@ jornada40/
 app.py                 Interfaz Streamlit
 docs/
   manual.md            Manual de uso de TODA la app + checklist de verificación
+  tutoriales/          Un tutorial por rol (gerente, admin, sadmin) con capturas
   guion_demo.md        Guion de 45 min para la demo
   registro_agentic.md  Registro de uso de herramientas agénticas
 ```
@@ -117,6 +118,8 @@ docs/
   en pico). Se puede deshacer.
 
 Detalle completo en [`docs/manual.md`](docs/manual.md).
+
+**Tutoriales por rol** (con capturas de la app en línea): [Gerente](docs/tutoriales/gerente.md) · [Admin de zona](docs/tutoriales/admin.md) · [Super Admin](docs/tutoriales/sadmin.md).
 
 ## Supuestos clave (y de dónde salen)
 
