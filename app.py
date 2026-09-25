@@ -286,6 +286,7 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]:has(.sb-gru
 /* cargador de archivos en español */
 [data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
 [data-testid="stFileUploaderDropzone"] button { font-size: 0 !important; }
+[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] { display: none !important; }
 [data-testid="stFileUploaderDropzone"] button::after { content: "Elegir CSV"; font-size: 13.5px; }
 .sb-marca { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; padding: 2px 10px 0; }
 .sb-sub { font-size: 12px; color: var(--ink-2); padding: 0 10px 18px; }
@@ -333,6 +334,10 @@ div[class*="st-key-navf_"] button {
 div[class*="st-key-navf_"] button:hover { border-color: var(--accent); color: var(--accent); }
 .nav-titulo { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
 .nav-titulo .pill { vertical-align: 3px; }
+[class*="st-key-anio_"] button[data-testid="stPopoverButton"] {
+  background: var(--accent-soft) !important; color: var(--accent) !important; border: none !important;
+  border-radius: 999px !important; min-height: 0 !important; padding: 3px 10px !important; }
+[class*="st-key-anio_"] button[data-testid="stPopoverButton"] p { font-size: 12px !important; font-weight: 600 !important; }
 
 /* ---------- calendario: mes ---------- */
 .cal-dow { text-align: center; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
@@ -603,8 +608,23 @@ def selector_tienda(clave: str) -> str:
     return t
 
 
-def barra_fechas(titulo: str, paso: str, clave: str, extra=None) -> None:
-    """[Hoy] [‹] [›]  Título  ...  (extra a la derecha). paso: 'mes' | 'semana' | 'dia'."""
+def selector_anio(domingo: date, clave: str) -> None:
+    """Pastilla "Jornada 48 h · 2026" que además deja saltar a otro año de la
+    reducción (misma fecha de hoy en ese año) sin dar 200 clics en ›."""
+    anio = anio_regimen(domingo)
+    with st.popover(f"Jornada {horas_regimen(domingo)} h · {anio}", key=f"anio_{clave}"):
+        st.caption("Ir al año")
+        for y in range(SEMANA_MIN.year, FIN_HORIZONTE.year + 1):
+            h = horas_regimen(calendario.semana_de(date(y, 7, 1))[0])
+            if st.button(f"{y} · {h} h", key=f"anio_{clave}_{y}", disabled=(y == anio), width="stretch"):
+                t = hoy() if y == hoy().year else date(y, hoy().month, min(hoy().day, 28))
+                ir_a_fecha(t)
+                st.session_state["mes_vista"] = (t.year, t.month)
+                st.rerun()
+
+
+def barra_fechas(titulo: str, paso: str, clave: str, extra=None, domingo: date | None = None) -> None:
+    """[Hoy] [‹] [›]  Título [Jornada]  ...  (extra a la derecha). paso: 'mes' | 'semana' | 'dia'."""
     c_hoy, c_prev, c_next, c_tit, c_extra = st.columns([0.8, 0.45, 0.45, 4.2, 2.6], vertical_alignment="center")
     if c_hoy.button("Hoy", key=f"navf_hoy_{clave}"):
         ir_a_fecha(hoy())
@@ -631,7 +651,10 @@ def barra_fechas(titulo: str, paso: str, clave: str, extra=None) -> None:
                          disabled=(base + delta) > FIN_HORIZONTE):
             ir_a_fecha(base + delta)
             st.rerun()
-    c_tit.markdown(f"<div class='nav-titulo'>{titulo}</div>", unsafe_allow_html=True)
+    with c_tit, st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        st.markdown(f"<div class='nav-titulo'>{titulo}</div>", unsafe_allow_html=True, width="content")
+        if domingo is not None:
+            selector_anio(domingo, clave)
     if extra:
         with c_extra:
             extra()
@@ -706,13 +729,14 @@ def pagina_horario() -> None:
 
     if vista == "Mes":
         a, m = st.session_state.get("mes_vista", (dia.year, dia.month))
-        barra_fechas(f"{calendario.NOMBRES_MES[m]} {a}", "mes", "mes", selector_vista)
+        barra_fechas(f"{calendario.NOMBRES_MES[m]} {a}", "mes", "mes", selector_vista,
+                     calendario.semana_de(date(a, m, 15))[0])
         vista_mes(tienda_id, a, m)
     elif vista == "Semana":
-        barra_fechas(f"{fmt_rango_semana(semana)} {pill_regimen(semana)}", "semana", "sem", selector_vista)
+        barra_fechas(f"{fmt_rango_semana(semana)}", "semana", "sem", selector_vista, semana)
         vista_semana(tienda_id, semana)
     else:
-        barra_fechas(f"{fmt_dia(dia)} {pill_regimen(semana)}", "dia", "dia", selector_vista)
+        barra_fechas(f"{fmt_dia(dia)}", "dia", "dia", selector_vista, semana)
         vista_dia(tienda_id, dia)
 
 
@@ -1087,9 +1111,10 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
             c_msg, c_btn = st.columns([5, 1], vertical_alignment="center")
             with c_msg:
                 aviso(f"<b>{calif['calificacion']}.</b> {calif['mensaje']} "
-                      f"<span style='color:#6e6e73'>· {len(ediciones)} cambio(s) esta semana</span>", tipo)
+                      f"<span style='color:#6e6e73'>· {len(ediciones)} cambio{'s' if len(ediciones) != 1 else ''} esta semana</span>", tipo)
             if c_btn.button("Deshacer", icon=":material/undo:", key="deshacer", width="stretch"):
-                ediciones.pop()
+                ultimo = ediciones.pop()
+                registrar("cambio_deshecho", f"{ultimo[0]} · {ultimo[1]}", alcance=("tienda", tienda_id))
                 st.session_state.pop(f"calif_{clave}", None)
                 if ediciones:
                     _calificar(rep, tienda_id, clave)
@@ -1102,7 +1127,8 @@ def _calificar(rep: dict, tienda_id: str, clave: tuple) -> dict:
     editado = optimizador.turnos_a_horario(turnos_vigentes(rep, tienda_id))
     calif = costos_ahorro.calificar_edicion_manual(original, editado, rep["plantilla"], rep["demanda"], rep["anio"])
     st.session_state[f"calif_{clave}"] = calif
-    registrar("turno_calificado", f"{calif['calificacion']} ({mxn(calif['delta_costo_mxn'])})",
+    _d = calif["delta_costo_mxn"]
+    registrar("turno_calificado", f"{calif['calificacion']} (costo {'+' if _d >= 0 else '−'}{mxn(abs(_d))})",
               alcance=("tienda", tienda_id))
     return calif
 
@@ -1115,7 +1141,7 @@ def pagina_tienda() -> None:
                    "Cuánto cuesta la semana y cuánto se ahorra frente al rol fijo de hoy.")
     with cab_der:
         tienda_id = selector_tienda("tda_tienda")
-    barra_fechas(f"{fmt_rango_semana(semana)} {pill_regimen(semana)}", "semana", "tda")
+    barra_fechas(f"{fmt_rango_semana(semana)}", "semana", "tda", domingo=semana)
     rep = obtener_semana(tienda_id, semana)
     marcar_calculada(tienda_id, semana)
     if rep["status"] == "INFEASIBLE":
@@ -1186,7 +1212,7 @@ def pagina_resumen() -> None:
     alcance = ("toda la red" if auth["rol"] == "super_admin"
                else f"zona {usuarios.ZONAS[auth['zona_id']]['nombre']}")
     encabezado("Resumen", f"Ahorro de la semana en {alcance} · {len(visibles)} tiendas.")
-    barra_fechas(f"{fmt_rango_semana(semana)} {pill_regimen(semana)}", "semana", "res")
+    barra_fechas(f"{fmt_rango_semana(semana)}", "semana", "res", domingo=semana)
     ids = list(visibles["tienda_id"])
     listas = [t for t in ids if esta_calculada(t, semana)]
     faltan = [t for t in ids if t not in listas]
@@ -1293,6 +1319,7 @@ def pagina_historial() -> None:
     df["Qué pasó"] = df["tipo_evento"].map(lambda t: auditoria.TIPOS_EVENTO.get(t, t))
     df["Cuándo"] = df["timestamp"].astype(str).str[:16].str.replace("T", " ")
     df["detalle"] = df["detalle"].fillna("").astype(str).replace({"None": "", "nan": ""})
+    df["alcance_valor"] = df["alcance_valor"].fillna("").astype(str).replace({"None": "", "nan": ""}).replace("", "Red")
     st.dataframe(df[["Cuándo", "usuario", "Qué pasó", "alcance_valor", "detalle"]], hide_index=True,
                  width="stretch", column_config={"usuario": "Quién", "alcance_valor": "Dónde",
                                                  "detalle": "Detalle"})
@@ -1311,7 +1338,7 @@ def pagina_usuarios() -> None:
                        "activo": st.column_config.CheckboxColumn("Activo"),
                        "email": st.column_config.TextColumn("Correo")})
     cambios = int(((editado["activo"] != vista["activo"]) | (editado["email"] != vista["email"])).sum())
-    if st.button(f"Guardar {cambios} cambio(s)" if cambios else "Sin cambios", type="primary",
+    if st.button(f"Guardar {cambios} cambio{'s' if cambios != 1 else ''}" if cambios else "Sin cambios", type="primary",
                  disabled=not cambios):
         antes = dict(zip(vista["usuario"], vista["activo"]))
         usuarios_df.loc[editado.index, "activo"] = editado["activo"]
@@ -1346,7 +1373,7 @@ def pagina_reglas() -> None:
     tabla = costos_ahorro.armar_tabla_trazabilidad()
     pend = tabla[tabla["estado"] == "pendiente_validacion_legal"]
     if not pend.empty:
-        aviso(f"<b>{len(pend)} regla(s) pendientes de validar con un abogado laboral</b> "
+        aviso(f"<b>{len(pend)} {'regla pendiente' if len(pend) == 1 else 'reglas pendientes'} de validar con un abogado laboral</b> "
               f"(tramo de horas extra al triple, art. 68).", "ojo")
     with st.expander("Trazabilidad completa"):
         st.dataframe(tabla, hide_index=True, width="stretch")

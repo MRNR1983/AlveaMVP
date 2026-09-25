@@ -16,6 +16,7 @@ Dependencias: pandas.
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pandas as pd
@@ -40,6 +41,7 @@ TIPOS_EVENTO: dict[str, str] = {
     "red_calculada": "Cálculo del Resumen",
     "turno_reasignado": "Cambio de turno",
     "turno_calificado": "Calificación de cambio",
+    "cambio_deshecho": "Cambio deshecho",
     "pagina_visitada": "Navegación entre páginas",
 }
 
@@ -62,7 +64,7 @@ def registrar_evento(
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         fila = pd.DataFrame([{
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "timestamp": datetime.now(ZoneInfo("America/Mexico_City")).replace(tzinfo=None).isoformat(timespec="seconds"),
             "usuario": usuario, "rol": rol,
             "alcance_tipo": alcance_tipo, "alcance_valor": alcance_valor or "",
             "tipo_evento": tipo_evento, "detalle": detalle,
@@ -98,7 +100,6 @@ def visible_para(df: pd.DataFrame, auth: dict, tiendas_zona: set[str] | None = N
             ((df["alcance_tipo"] == "zona") & (df["alcance_valor"] == auth["zona_id"]))
             | ((df["alcance_tipo"] == "tienda") & df["alcance_valor"].isin(tiendas_zona or set()))
             | (df["usuario"] == auth["usuario"])
-            | (df["alcance_tipo"] == "red")
         ]
     return df[
         ((df["alcance_tipo"] == "tienda") & (df["alcance_valor"] == auth["tienda_id"]))

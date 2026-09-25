@@ -25,6 +25,7 @@ from __future__ import annotations
 import smtplib
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -75,7 +76,7 @@ def crear_notificacion(
         data_dir.mkdir(parents=True, exist_ok=True)
         fila = pd.DataFrame([{
             "id": uuid.uuid4().hex[:12],
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "timestamp": datetime.now(ZoneInfo("America/Mexico_City")).replace(tzinfo=None).isoformat(timespec="seconds"),
             "alcance_tipo": alcance_tipo, "alcance_valor": alcance_valor or "",
             "tipo": tipo, "severidad": severidad, "mensaje": mensaje,
             "correo_enviado": correo_ok,
