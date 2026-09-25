@@ -25,6 +25,20 @@ import streamlit as st
 from jornada40 import (auditoria, calendario, costos_ahorro, datos_sinteticos, demanda_personal,
                         escenario_base, notificaciones, optimizador, reglas, usuarios, vista_red)
 
+# Streamlit Cloud recarga app.py en cada deploy, pero puede dejar en memoria la
+# versión anterior de los módulos de jornada40 (pasó el 24-sep-2026: interfaz
+# nueva con optimizador viejo). Si la versión del modelo no coincide, se
+# recargan todos los módulos del paquete.
+def _asegurar_modulos_al_dia(version: str) -> None:
+    import importlib
+    import sys
+    if getattr(optimizador, "VERSION_MODELO", None) == version:
+        return
+    for nombre in sorted([m for m in sys.modules if m.startswith("jornada40.")]):
+        importlib.reload(sys.modules[nombre])
+    st.cache_data.clear()
+
+
 st.set_page_config(page_title="Alvea", page_icon=":material/calendar_month:", layout="wide",
                    initial_sidebar_state="auto")
 
@@ -34,6 +48,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
 VERSION_MODELO = "2026-09-24-agregado-por-area-b"
+_asegurar_modulos_al_dia(VERSION_MODELO)
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
 

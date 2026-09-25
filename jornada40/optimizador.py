@@ -77,6 +77,7 @@ def _slots_dia(hora_apertura: int, hora_cierre: int) -> list[int]:
 # intento: dos plantillas descansaban a la misma hora y esa hora quedaba
 # sin nadie que la pudiera cubrir -> INFEASIBLE sin importar la plantilla.)
 
+VERSION_MODELO = "2026-09-24-agregado-por-area-b"  # debe coincidir con app.VERSION_MODELO
 DURACION_TURNO_H = 8
 HORAS_EXTENSION = 2          # extensión opcional de un turno = tiempo extra (máx. 3 h/día, art. 66)
 MAX_DIAS_EXTENDIDOS = 3      # "ni más de tres veces en una semana" (art. 66)
