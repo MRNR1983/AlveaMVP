@@ -1,0 +1,46 @@
+timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
+2026-09-25T03:51:42,Man001,manager,tienda,T001,sesion_iniciada,
+2026-09-25T03:51:42,Man001,manager,tienda,T001,pagina_visitada,Horario
+2026-09-25T03:52:28,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-25T03:52:28,SADMIN,super_admin,red,,pagina_visitada,Resumen
+2026-09-25T03:55:07,SADMIN,super_admin,red,,red_calculada,"49 tiendas, semana 2026-09-20"
+2026-09-25T04:07:44,Man001,manager,tienda,T001,sesion_iniciada,
+2026-09-25T04:07:44,Man001,manager,tienda,T001,pagina_visitada,Horario
+2026-09-25T04:09:56,Man001,manager,tienda,T001,turno_calificado,No recomendado ($-223)
+2026-09-25T04:09:56,Man001,manager,tienda,T001,turno_reasignado,"Ana López (E00037) → Descanso, 2026-09-24"
+2026-09-25T04:11:13,Man001,manager,tienda,T001,pagina_visitada,Tienda
+2026-09-25T04:12:52,Man001,manager,tienda,T001,sesion_cerrada,
+2026-09-25T04:13:01,ADMIN-Z1,admin,zona,Z1,sesion_iniciada,
+2026-09-25T04:13:01,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Resumen
+2026-09-25T04:13:11,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Avisos
+2026-09-25T04:13:19,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Historial
+2026-09-25T04:13:59,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Horario
+2026-09-25T04:14:29,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Tienda
+2026-09-25T04:14:33,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Usuarios
+2026-09-25T04:14:53,ADMIN-Z1,admin,zona,Z1,sesion_cerrada,
+2026-09-25T04:14:56,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-25T04:14:56,SADMIN,super_admin,red,,pagina_visitada,Resumen
+2026-09-25T04:15:09,SADMIN,super_admin,red,,pagina_visitada,Reglas legales
+2026-09-25T04:15:18,SADMIN,super_admin,red,,pagina_visitada,Datos
+2026-09-25T04:27:39,SADMIN,super_admin,red,,pagina_visitada,Reglas legales
+2026-09-25T04:27:46,SADMIN,super_admin,red,,pagina_visitada,Usuarios
+2026-09-25T04:27:47,SADMIN,super_admin,red,,pagina_visitada,Historial
+2026-09-25T04:27:49,SADMIN,super_admin,red,,pagina_visitada,Avisos
+2026-09-25T04:27:56,SADMIN,super_admin,red,,pagina_visitada,Tienda
+2026-09-25T01:08:54,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-25T01:08:54,SADMIN,super_admin,red,,pagina_visitada,Resumen
+2026-09-25T01:09:33,SADMIN,super_admin,red,,pagina_visitada,Horario
+2026-09-25T01:39:43,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-25T01:39:43,SADMIN,super_admin,red,,pagina_visitada,Resumen
+2026-09-25T01:40:00,SADMIN,super_admin,red,,pagina_visitada,Horario
+2026-09-25T01:41:58,SADMIN,super_admin,red,,pagina_visitada,Datos
+2026-09-25T01:42:39,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-25T01:42:39,SADMIN,super_admin,red,,pagina_visitada,Resumen
+2026-09-25T01:42:53,SADMIN,super_admin,red,,pagina_visitada,Datos
+2026-09-25T01:43:55,SADMIN,super_admin,red,,datos_cargados,"Tráfico por hora: 2,016 filas, 1 semana (2,016 reemplazadas); Ventas por hora: 2,016 filas, 1 semana (2,016 reemplazadas)"
+2026-09-25T01:44:09,SADMIN,super_admin,red,,pagina_visitada,Horario
+2026-09-25T01:47:00,SADMIN,super_admin,red,,pagina_visitada,Datos
+2026-09-25T01:47:33,SADMIN,super_admin,red,,datos_restablecidos,2 archivos
+2026-09-25T01:47:45,SADMIN,super_admin,red,,pagina_visitada,Horario
+2026-09-25T09:32:03,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-25T09:32:04,SADMIN,super_admin,red,,pagina_visitada,Resumen
