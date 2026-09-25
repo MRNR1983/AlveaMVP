@@ -56,3 +56,4 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-25T10:07:20,SADMIN,super_admin,red,,sesion_iniciada,
 2026-09-25T10:07:20,SADMIN,super_admin,red,,pagina_visitada,Resumen
 2026-09-25T10:07:36,SADMIN,super_admin,red,,pagina_visitada,Horario
+2026-09-25T10:16:36,SADMIN,super_admin,red,,pagina_visitada,Datos
