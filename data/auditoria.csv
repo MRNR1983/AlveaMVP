@@ -68,3 +68,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-25T10:25:54,SADMIN,super_admin,red,,datos_restablecidos,8 archivos
 2026-09-25T14:11:27,Man001,manager,tienda,T001,sesion_iniciada,
 2026-09-25T14:11:27,Man001,manager,tienda,T001,pagina_visitada,Horario
+2026-09-25T19:54:10,Man001,manager,tienda,T001,sesion_iniciada,
+2026-09-25T19:54:10,Man001,manager,tienda,T001,pagina_visitada,Horario
