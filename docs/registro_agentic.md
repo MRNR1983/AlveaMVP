@@ -321,3 +321,57 @@ tamaño del modelo. Cambios: turnos extendibles +2 h (art. 66), orden legal
 de horas extra, y un modelo en dos pasos (conteos por área, exacto y
 óptimo en segundos; luego reparto exacto de nombres). Verificado con las
 50 tiendas en 2026 y 2030.
+
+## 25-sep-2026 — Números que no cambian
+
+Para que la cifra de la demo sea la misma en la app en línea, en local y en
+cualquier reinicio, el solver pasó a ser determinista (semilla fija, tiempo
+determinista en lugar de tiempo de reloj, 4 hilos). Verificado: semana del
+20 sep 2026 = $1,889,625 (29.0%) y semana del 22 sep 2030 = $1,519,383
+(21.7%), idénticas en local y en vivo.
+
+## 25–26-sep-2026 — Los datos son archivos
+
+Decisión de producto de Mauricio: no hablar de "datos reales o sintéticos",
+solo de archivos. Cinco archivos (Tiendas, Plantilla y, por semana, Tráfico,
+Ventas y Ausentismo) en dos capas: los de arranque en el repo y los subidos
+encima. Subir un archivo lo cruza por semana y tienda; una *huella* por
+tienda-semana decide qué se recalcula y qué abre al instante. Se generaron
+sets de prueba (`archivos_para_subir/`) con el resultado esperado anotado y
+se verificó cada uno subiéndolo en la app.
+
+## 26–27-sep-2026 — Barrido de botones y verificación año por año
+
+- Un script de Playwright recorre los 3 roles y prueba 117 botones y
+  navegaciones. Encontró: la caché no se refrescaba tras subir archivos
+  (un argumento con guion bajo quedaba fuera de la llave de la caché);
+  "Hoy" no regresaba el mes; la calificación de un cambio contaba personas
+  totales en lugar de por área.
+- Verificación de las 50 tiendas en los 5 años de la reforma (tabla en
+  `comparacion_pdf.md`) y prueba de un tope duro de 40 h sin horas extra
+  (deja horas pico sin gente en 7 de 10 tiendas).
+- Video tutorial grabado con Playwright y ffmpeg.
+
+## 28-sep-2026 — El CFO lo prueba solo
+
+- Botón **Calcular el mes** y precálculo de septiembre–octubre para que el
+  calendario abra lleno.
+- **Cuentas propias**: registro con contraseña cifrada (PBKDF2 con sal) y un
+  espacio privado por cuenta que arranca con los archivos de ejemplo.
+  **Primeros pasos** (4 pasos), tabla **Antes y después** automática al
+  aplicar archivos y **Vaciar** para cargar una empresa desde cero.
+- Dos errores encontrados por las pruebas antes de que los viera un usuario:
+  (1) los diálogos de Streamlit se vuelven a correr sin la parte de arriba
+  del script, así que "Vaciar" apuntaba al espacio compartido; se corrigió y
+  se agregó un candado para que vaciar nunca toque la demo; (2) Streamlit
+  Cloud dejó en memoria una versión vieja de un módulo tras el deploy; se
+  detectó revisando la app en vivo y se corrigió en minutos.
+
+## Cómo se repartió el trabajo
+
+Mauricio definió el problema, las reglas de negocio (línea base de 80 FTE a
+48 h con rol fijo, ahorro como horas evitadas × veces × costo, turnos fijos),
+las prioridades y cada decisión de producto. El agente (Claude) propuso
+opciones con su calificación, escribió el código y las pruebas, y verificó
+cada entrega: pruebas automáticas (105), barrido de botones con Playwright
+y revisión en vivo con Chrome.
