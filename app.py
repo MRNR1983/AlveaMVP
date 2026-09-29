@@ -474,7 +474,9 @@ def entrar_con_cuenta(cta: dict, evento: str) -> None:
 
 if "auth" not in st.session_state:
     st.markdown(CSS_LOGIN, unsafe_allow_html=True)
-    st.markdown("<div class='lg-marca'>Alvea</div>", unsafe_allow_html=True)
+    st.markdown("<div class='lg-marca' style='margin-bottom:4px'>Alvea</div>"
+                "<div class='lg-sub'>Reto técnico para <span style=\"font-family:Georgia,'Times New Roman',serif\">"
+                "AIvena</span> · Jornada40</div>", unsafe_allow_html=True)
     if st.session_state.get("modo_login") == "registro":
         st.markdown("<div class='lg-sub'>Crea tu cuenta. Tendrás tu propio espacio con archivos de "
                     "ejemplo para 50 tiendas; lo que subas solo cambia tu espacio.</div>", unsafe_allow_html=True)
