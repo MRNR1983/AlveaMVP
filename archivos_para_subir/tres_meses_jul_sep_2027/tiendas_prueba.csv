@@ -1,0 +1,4 @@
+tienda_id,cluster_id,formato,hora_apertura,hora_cierre,num_cajas_fisicas,fte_totales
+T001,CDMX-Norte,chico,8,22,7,80
+T005,MTY,mediano,7,22,11,80
+T007,CDMX-Norte,grande,6,23,12,80

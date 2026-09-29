@@ -1545,7 +1545,7 @@ def pagina_reglas() -> None:
 
 
 SET_EJEMPLO = archivos.RAIZ_REPO / "archivos_para_subir" / "semana4oct_2026_promo_cfo"
-MAX_ANTES_DESPUES = 12   # tiendas-semana que se calculan solas al aplicar (~1 min cada una)
+MAX_ANTES_DESPUES = 12   # tiendas que se calculan solas al aplicar: su primera semana (~1 min cada una)
 
 
 def leer_subidos(subidos: list) -> list[tuple[str, str, pd.DataFrame]]:
@@ -1609,8 +1609,12 @@ def aplicar_archivos(listos: list) -> None:
     """Aplica los archivos y arma el Antes/Después de lo que tocaron (solo si ya estaba calculado,
     el Antes; el Después se calcula aquí mismo, hasta MAX_ANTES_DESPUES tiendas-semana)."""
     pares = _tocados(listos)
+    primeras: dict[str, date] = {}
+    for t, d in pares:                       # ya vienen ordenados por semana
+        primeras.setdefault(t, d)
+    elegidos = set(list(primeras.items())[:MAX_ANTES_DESPUES])
     antes = {}
-    for t, d in pares:
+    for t, d in elegidos:
         if archivos.semana_completa(datos_semana(d)) and esta_calculada(t, d):
             antes[(t, d)] = _cifras(obtener_semana(t, d), t)
     orden = list(archivos.TIPOS)   # catálogos primero: el ausentismo usa la plantilla
@@ -1622,19 +1626,19 @@ def aplicar_archivos(listos: list) -> None:
                       + (f", {len(semanas)} semana{'s' if len(semanas) != 1 else ''}" if semanas else "")
                       + f" ({r['reemplazadas']:,} reemplazadas)")
     registrar("datos_cargados", "; ".join(hechos))
-    listos_calc = [(t, d) for t, d in pares
-                   if archivos.semana_completa(datos_semana(d)) and t in set(datos_fijos()["tiendas"]["tienda_id"])]
+    existen = set(datos_fijos()["tiendas"]["tienda_id"])
+    listos_calc = [(t, d) for t, d in pares if (t, d) in elegidos and t in existen
+                   and archivos.semana_completa(datos_semana(d))]
     filas = []
     barra = st.progress(0.0) if listos_calc else None
-    for i, (t, d) in enumerate(listos_calc[:MAX_ANTES_DESPUES]):
-        barra.progress(i / min(len(listos_calc), MAX_ANTES_DESPUES),
-                       text=f"Recalculando tienda {t}, semana {fmt_rango_semana(d)} "
-                            f"({i + 1} de {min(len(listos_calc), MAX_ANTES_DESPUES)})")
+    for i, (t, d) in enumerate(listos_calc):
+        barra.progress(i / len(listos_calc),
+                       text=f"Recalculando tienda {t}, semana {fmt_rango_semana(d)} ({i + 1} de {len(listos_calc)})")
         despues = _cifras(obtener_semana(t, d), t)
         marcar_calculada(t, d)
         filas.append({"tienda": t, "semana": d, "antes": antes.get((t, d)), "despues": despues})
     st.session_state["antes_despues"] = {"filas": filas, "hechos": hechos,
-                                         "sin_calcular": len(listos_calc) - len(filas)}
+                                         "sin_calcular": len(pares) - len(filas)}
 
 
 def ver_en_horario(tienda_id: str, semana: date) -> None:
@@ -1667,7 +1671,8 @@ def tabla_antes_despues(clave: str) -> None:
     st.caption("Ahorro de la semana contra el rol fijo de hoy. «Antes» sale vacío si esa tienda-semana no "
                "se había calculado.")
     if ad["sin_calcular"]:
-        st.caption(f"Otras {ad['sin_calcular']} tiendas-semana cambiaron; se calculan al abrirlas.")
+        st.caption(f"Aquí va la primera semana de cada tienda. Las otras {ad['sin_calcular']} tiendas-semana se "
+                   "calculan al abrirlas; en Horario → Mes, «Calcular el mes» llena un mes completo.")
     c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
     opciones = {f"Tienda {f['tienda']} · {fmt_rango_semana(f['semana'])}": f for f in filas}
     elegida = c1.selectbox("Ver en Horario", list(opciones), key=f"ad_sel_{clave}")
