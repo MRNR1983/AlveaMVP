@@ -7,6 +7,21 @@ solo con archivos (tiendas, plantilla, tráfico, ventas, ausentismo), respeta la
 de 40 horas, DOF 01-05-2026) y cuantifica en pesos el ahorro frente a
 cómo se programaría hoy.
 
+## Entregables
+
+| # | Qué pide el reto | Dónde está |
+| --- | --- | --- |
+| 1 | **La herramienta funcionando**: activa, accesible, reproducible, de extremo a extremo sin el candidato | App: **https://alveamvp.streamlit.app** · credenciales abajo, o crea tu cuenta en el login · código en este repo (se corre con `streamlit run app.py` o Docker) |
+| 2 | **Evidencia del proceso** | |
+| | Documentación y capturas | Este README · [Manual](docs/manual.md) · Tutoriales con capturas: [Gerente](docs/tutoriales/gerente.md), [Admin de zona](docs/tutoriales/admin.md), [Super Admin](docs/tutoriales/sadmin.md), [Tu propia cuenta](docs/tutoriales/cuenta_propia.md) · [Video](docs/tutoriales/Alvea_tutorial.mp4) |
+| | Supuestos y decisiones de diseño | Secciones [Supuestos clave](#supuestos-clave-y-de-dónde-salen) y [Cómo funciona](#cómo-funciona-resumen) de este README |
+| | Nota de trazabilidad de restricciones | [Comparación punto por punto contra el PDF y año por año](docs/comparacion_pdf.md) · página **Reglas legales** en la app · [`jornada40/reglas.py`](jornada40/reglas.py) |
+| | Registro de herramientas agénticas | [docs/registro_agentic.md](docs/registro_agentic.md) |
+| | Archivos para probar | [archivos_para_subir/](archivos_para_subir/README.md), con el resultado esperado de cada set |
+| 3 | **Demo en llamada (45 min)** | [Guion de la demo](docs/guion_demo.md) |
+
+**Resultado:** semana 20–26 sep 2026 (48 h): **29.0% de ahorro** en las 50 tiendas, 50 de 50 arriba de 8% y **0 horas pico sin cubrir**. Semana 22–28 sep 2030 (40 h): **21.7%**, 50 de 50 arriba de 8%, 0 horas pico sin cubrir.
+
 ## Acceso / credenciales de login
 
 La app pide iniciar sesión: usuario + contraseña, como cualquier login
