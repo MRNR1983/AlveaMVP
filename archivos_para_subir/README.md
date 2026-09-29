@@ -4,6 +4,8 @@ Para probar la página **Datos** (usuario `SADMIN`): suelta los CSV de una carpe
 
 | Carpeta | Qué trae | Dónde verlo | Antes | Después |
 | --- | --- | --- | --- | --- |
+| `semana4oct_2026_promo_cfo` | Promo de fin de semana: tráfico y ventas +35% viernes 9 y sábado 10 oct en T001, T005 y T009; además 10 personas más de T009 faltan el sábado 10 | T001 · T005 · T009, semana 4–10 oct 2026 | $38,546 (30.8%) · $32,238 (24.5%) · $43,586 (34.7%) | **$35,544 (27.8%) · $29,333 (21.7%) · $44,470 (34.1%)** |
+| | | T002 (no viene en los archivos) | $41,075 (30.4%) | $41,075, abre al instante |
 | `semana27sep_2026_cdmx_mas40` | Tráfico y ventas +40% de las 12 tiendas CDMX, semana 27 sep – 3 oct 2026 (una flecha › desde hoy) | T001 | $37,115 (29.3%) | **$28,887 (21.4%)**, pico cubierto |
 | | | T002 (no viene en los archivos) | $38,565 | $38,565, abre al instante |
 | `semana27sep_2026_T001_faltas` | Ausentismo de T001: 12 personas más faltan el lunes 28 y el martes 29 | T001, Día lunes 28 | $37,115 | $38,170 (29.8%), pico cubierto; en el Día aparecen las faltas |
