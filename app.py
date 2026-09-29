@@ -47,13 +47,13 @@ st.set_page_config(page_title="Alvea", page_icon=":material/calendar_month:", la
 
 DATA_RAIZ = Path("data")
 DATA_DIR = DATA_RAIZ          # con una cuenta propia pasa a data/espacios/<id> (se fija tras el login)
-archivos.usar_espacio(None)   # cada corrida arranca en la demo compartida
 TIEMPO_LIMITE_SEG = 10.0
 # Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
 VERSION_MODELO = "2026-09-25-determinista"
 _asegurar_modulos_al_dia(VERSION_MODELO)
+archivos.usar_espacio(None)   # cada corrida arranca en la demo compartida
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
 FIN_HORIZONTE = date(2030, 12, 31)   # última fecha de la reducción escalonada (40 h)
 
