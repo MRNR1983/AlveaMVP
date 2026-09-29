@@ -1,0 +1,3 @@
+timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
+2026-09-28T21:51:16,prueba.cfo@alvea-demo.mx,super_admin,red,,cuenta_creada,
+2026-09-28T21:51:16,prueba.cfo@alvea-demo.mx,super_admin,red,,pagina_visitada,Primeros pasos
