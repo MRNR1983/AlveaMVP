@@ -1,6 +1,6 @@
 # Alvea PMV — Autoservicio MX
 
-PMV para el reto técnico de ALVENA/AIvena (Head of Product and Technology):
+PMV para el reto técnico de AIvena (Head of Product and Technology):
 una herramienta que arma el horario semanal de personal para 50 tiendas
 de un autoservicio genérico ("Autoservicio MX", marca ficticia), trabaja
 solo con archivos (tiendas, plantilla, tráfico, ventas, ausentismo), respeta la jornada legal mexicana (incluida la reforma
@@ -33,6 +33,16 @@ La contraseña son los primeros dígitos de π, elegidos justo por ser un
 valor público y fácil de compartir con quien revise la herramienta — no es
 un secreto real (ver `jornada40/usuarios.py` para el detalle de seguridad
 aceptado en este PMV).
+
+### Tu propia cuenta (recomendado para probarla solo)
+
+En el login: **¿Primera vez? Crea tu cuenta**. Cada cuenta tiene un
+espacio privado: arranca con los archivos de ejemplo de las 50 tiendas y
+lo que subas no toca la demo ni a nadie más. Un asistente de 4 pasos
+(**Primeros pasos**) te lleva a subir archivos y ver el antes y después.
+Con **Vaciar** cargas una empresa desde cero. Tutorial:
+[`docs/tutoriales/cuenta_propia.md`](docs/tutoriales/cuenta_propia.md).
+Sets de prueba: [`archivos_para_subir/`](archivos_para_subir/README.md).
 
 ## Cómo correrla con Docker
 

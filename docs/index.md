@@ -4,7 +4,7 @@ title: Alvea PMV
 
 # Alvea PMV
 
-PMV para el reto técnico de **ALVENA/AIvena** (Head of Product and Technology):
+PMV para el reto técnico de **AIvena** (Head of Product and Technology):
 programación semanal de personal para 50 tiendas, cumpliendo la reforma de
 40 horas (DOF 01-05-2026), con ahorro cuantificado en MXN frente al escenario
 actual.
@@ -22,7 +22,7 @@ para el detalle completo).
 
 - [Comparación contra el PDF del reto](comparacion_pdf.html)
 - [Manual de uso (toda la app) + checklist de verificación](manual.html)
-- Tutoriales por rol: [Gerente](tutoriales/gerente.html) · [Admin de zona](tutoriales/admin.html) · [Super Admin](tutoriales/sadmin.html)
+- Tutoriales por rol: [Gerente](tutoriales/gerente.html) · [Admin de zona](tutoriales/admin.html) · [Super Admin](tutoriales/sadmin.html) · [Tu propia cuenta](tutoriales/cuenta_propia.html)
 - [Checklist antes de publicar (20 puntos)](checklist_publicacion.html)
 - [README — cómo correrlo, estructura, supuestos](https://github.com/MRNR1983/AlveaMVP/blob/main/README.md)
 - [Guion de demo (45 min con el CEO/CFO)](guion_demo.html)
