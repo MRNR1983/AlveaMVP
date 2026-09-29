@@ -15,6 +15,7 @@ empleado y día; misma tienda o empleado en los catálogos). Lo demás se queda.
 from __future__ import annotations
 
 import hashlib
+from contextvars import ContextVar
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -25,6 +26,28 @@ from jornada40 import persistencia
 RAIZ_REPO = Path(__file__).resolve().parent.parent
 ARRANQUE = RAIZ_REPO / "archivos"            # capa base (en el repo)
 SUBIDOS = Path("data") / "archivos"          # capa de archivos subidos (tapa a la base)
+MARCA_VACIO = "vacio.txt"                     # en la capa de subidos: no usar los archivos de arranque
+
+# Cada cuenta registrada tiene su propio espacio (data/espacios/<id>/archivos). Se fija
+# al inicio de cada corrida; por hilo, así dos sesiones no se pisan.
+_espacio: ContextVar[Path | None] = ContextVar("espacio", default=None)
+
+
+def usar_espacio(carpeta: Path | None) -> None:
+    """None = los archivos de la demo compartida; si no, la capa de subidos de esa cuenta."""
+    _espacio.set(carpeta)
+
+
+def subidos() -> Path:
+    return _espacio.get() or SUBIDOS
+
+
+def vacio() -> bool:
+    return (subidos() / MARCA_VACIO).exists()
+
+
+def _capas() -> tuple[Path, ...]:
+    return (subidos(),) if vacio() else (subidos(), ARRANQUE)
 
 TIPOS: dict[str, dict] = {
     "tiendas": {"nombre": "Tiendas", "columnas": ["tienda_id", "cluster_id", "formato", "hora_apertura",
@@ -55,7 +78,7 @@ def _rel(tipo: str, domingo: date | None = None) -> str:
 
 
 def _ruta(rel: str) -> Path | None:
-    for capa in (SUBIDOS, ARRANQUE):
+    for capa in _capas():
         p = capa / rel
         if p.exists():
             return p
@@ -64,7 +87,7 @@ def _ruta(rel: str) -> Path | None:
 
 def firma(domingo: date) -> tuple:
     """Cambia si cambia cualquier archivo que usa esa semana (para cachés)."""
-    out = []
+    out = [("capas", tuple(str(c) for c in _capas()))]
     for rel in [_rel("tiendas"), _rel("plantilla")] + [_rel(t, domingo) for t in SEMANALES]:
         p = _ruta(rel)
         out.append((rel, str(p) if p else None, p.stat().st_mtime_ns if p else 0))
@@ -97,6 +120,15 @@ def leer_semana(domingo: date) -> dict[str, pd.DataFrame]:
     for t in SEMANALES:
         d[t] = leer(t, domingo)
     return d
+
+
+def semanas_con_archivos() -> list[date]:
+    """Semanas que tienen Tráfico y Ventas (lo mínimo, junto con los catálogos, para calcular)."""
+    doms = None
+    for t in ("trafico", "ventas"):
+        d = {date.fromisoformat(p.name[:10]) for capa in _capas() for p in (capa / t).glob("*.csv.gz")}
+        doms = d if doms is None else doms & d
+    return sorted(doms or [])
 
 
 def semana_completa(datos: dict) -> bool:
@@ -146,7 +178,7 @@ def validar(tipo: str, df: pd.DataFrame) -> str | None:
 
 
 def _escribir(rel: str, df: pd.DataFrame) -> None:
-    p = SUBIDOS / rel
+    p = subidos() / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(p, index=False, compression="gzip" if rel.endswith(".gz") else None)
     persistencia.subir(p)
@@ -189,13 +221,33 @@ def cruzar(tipo: str, nuevo: pd.DataFrame) -> dict:
 def restaurar_originales() -> int:
     """Quita todo lo subido: vuelven los archivos de arranque. Regresa cuántos se quitaron."""
     n = 0
-    if SUBIDOS.exists():
-        for p in sorted(SUBIDOS.rglob("*")):
+    if subidos().exists():
+        for p in sorted(subidos().rglob("*")):
             if p.is_file():
                 persistencia.borrar(p)
                 p.unlink()
-                n += 1
+                n += int(p.name != MARCA_VACIO)
     return n
+
+
+def vaciar() -> int:
+    """Quita todo lo subido y deja de usar los archivos de arranque: se empieza desde cero."""
+    if _espacio.get() is None:
+        raise ValueError("vaciar solo aplica al espacio de una cuenta, nunca a la demo compartida")
+    n = restaurar_originales()
+    marca = subidos() / MARCA_VACIO
+    marca.parent.mkdir(parents=True, exist_ok=True)
+    marca.write_text("Espacio vacío: solo cuentan los archivos subidos.\n")
+    persistencia.subir(marca)
+    return n
+
+
+def hay_subidos_reales() -> bool:
+    return subidos().exists() and any(p.is_file() and p.name != MARCA_VACIO for p in subidos().rglob("*"))
+
+
+def hay_subidos() -> bool:
+    return vacio() or (subidos().exists() and any(p.is_file() for p in subidos().rglob("*")))
 
 
 # ---------------------------------------------------------------------------
@@ -206,15 +258,15 @@ def inventario() -> pd.DataFrame:
     filas = []
     for tipo, info in TIPOS.items():
         if info["semanal"]:
-            doms = sorted({p.name[:10] for capa in (ARRANQUE, SUBIDOS) for p in (capa / tipo).glob("*.csv.gz")})
-            subidas = sorted(p.name[:10] for p in (SUBIDOS / tipo).glob("*.csv.gz"))
+            doms = sorted({p.name[:10] for capa in _capas() for p in (capa / tipo).glob("*.csv.gz")})
+            subidas = sorted(p.name[:10] for p in (subidos() / tipo).glob("*.csv.gz"))
             cubre = (f"{len(doms)} semanas · {doms[0]} a {doms[-1]}" if doms else "sin archivos")
             cambios = f"{len(subidas)} semana{'s' if len(subidas) != 1 else ''} subida{'s' if len(subidas) != 1 else ''}" \
                 if subidas else "—"
         else:
             df = leer(tipo)
             cubre = f"{len(df):,} {'tiendas' if tipo == 'tiendas' else 'personas'}"
-            cambios = "subido" if (SUBIDOS / _rel(tipo)).exists() else "—"
+            cambios = "subido" if (subidos() / _rel(tipo)).exists() else "—"
         filas.append({"Archivo": info["nombre"], "Cubre": cubre, "Cambios subidos": cambios})
     return pd.DataFrame(filas)
 

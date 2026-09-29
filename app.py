@@ -24,7 +24,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from jornada40 import (archivos, auditoria, calendario, costos_ahorro, demanda_personal,
+from jornada40 import (archivos, auditoria, calendario, costos_ahorro, cuentas, demanda_personal,
                         escenario_base, notificaciones, optimizador, persistencia, precalculado, reglas, usuarios, vista_red)
 from jornada40 import semana as semana_calc
 
@@ -35,7 +35,7 @@ from jornada40 import semana as semana_calc
 def _asegurar_modulos_al_dia(version: str) -> None:
     import importlib
     import sys
-    if getattr(optimizador, "VERSION_MODELO", None) == version:
+    if getattr(optimizador, "VERSION_MODELO", None) == version and hasattr(archivos, "usar_espacio"):
         return
     for nombre in sorted([m for m in sys.modules if m.startswith("jornada40.")]):
         importlib.reload(sys.modules[nombre])
@@ -45,7 +45,9 @@ def _asegurar_modulos_al_dia(version: str) -> None:
 st.set_page_config(page_title="Alvea", page_icon=":material/calendar_month:", layout="wide",
                    initial_sidebar_state="auto")
 
-DATA_DIR = Path("data")
+DATA_RAIZ = Path("data")
+DATA_DIR = DATA_RAIZ          # con una cuenta propia pasa a data/espacios/<id> (se fija tras el login)
+archivos.usar_espacio(None)   # cada corrida arranca en la demo compartida
 TIEMPO_LIMITE_SEG = 10.0
 # Súbelo cada vez que cambie el modelo (optimizador, demanda, calibración): forma parte de
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
@@ -454,31 +456,74 @@ def pill_regimen(domingo: date) -> str:
 @st.cache_resource
 def _restaurar_datos() -> list[str]:
     """Una vez por arranque: trae de GitHub el historial, avisos, cambios, cuentas y archivos subidos."""
-    return persistencia.restaurar(DATA_DIR)
+    return persistencia.restaurar(DATA_RAIZ)
 
 
 _restaurar_datos()
 st.markdown(CSS, unsafe_allow_html=True)
 
+def entrar_con_cuenta(cta: dict, evento: str) -> None:
+    """Abre la sesión de una cuenta propia en su espacio."""
+    global DATA_DIR
+    st.session_state["auth"] = {"rol": "super_admin", "tienda_id": None, "zona_id": None,
+                                "usuario": cta["correo"], "cuenta": True, "espacio": cta["espacio"]}
+    DATA_DIR = cuentas.carpeta_espacio(DATA_RAIZ, cta["espacio"])
+    registrar(evento)
+    st.session_state["pagina"] = "Primeros pasos" if str(cta.get("ob") or "0") != "0" else "Resumen"
+
+
 if "auth" not in st.session_state:
     st.markdown(CSS_LOGIN, unsafe_allow_html=True)
     st.markdown("<div class='lg-marca'>Alvea</div>", unsafe_allow_html=True)
+    if st.session_state.get("modo_login") == "registro":
+        st.markdown("<div class='lg-sub'>Crea tu cuenta. Tendrás tu propio espacio con archivos de "
+                    "ejemplo para 50 tiendas; lo que subas solo cambia tu espacio.</div>", unsafe_allow_html=True)
+        with st.form("form_registro"):
+            r_nombre = st.text_input("Nombre")
+            r_empresa = st.text_input("Empresa")
+            r_correo = st.text_input("Correo", placeholder="nombre@empresa.mx")
+            r_pw = st.text_input("Contraseña", type="password", help="Al menos 8 caracteres.")
+            r_pw2 = st.text_input("Repite la contraseña", type="password")
+            r_ok = st.checkbox("Acepto que Alvea guarde mi nombre, empresa, correo y lo que haga en mi espacio, "
+                               "solo para operar la prueba. Alvea es un prototipo: la decisión legal de cada "
+                               "horario es de la empresa.")
+            creado = st.form_submit_button("Crear cuenta", type="primary", width="stretch")
+        if creado:
+            error = cuentas.validar_registro(r_correo, r_nombre, r_empresa, r_pw, r_pw2, cuentas.cargar(DATA_RAIZ))
+            if not error and not r_ok:
+                error = "Para seguir, acepta el aviso de privacidad."
+            if error:
+                st.error(error)
+            else:
+                entrar_con_cuenta(cuentas.crear(DATA_RAIZ, r_correo, r_nombre, r_empresa, r_pw), "cuenta_creada")
+                st.session_state.pop("modo_login", None)
+                st.rerun()
+        if st.button("Ya tengo cuenta · Entrar", type="tertiary", width="stretch"):
+            st.session_state.pop("modo_login", None)
+            st.rerun()
+        st.stop()
     with st.form("form_login"):
-        usuario_txt = st.text_input("Usuario")
+        usuario_txt = st.text_input("Usuario o correo")
         password = st.text_input("Contraseña", type="password")
         enviado = st.form_submit_button("Entrar", type="primary", width="stretch")
     if enviado:
         clave_u = usuario_txt.strip().upper()
-        fila = usuarios.buscar_usuario(usuario_txt, usuarios_con_estado())
         hasta = bloqueado_hasta(clave_u)
+        es_cuenta = cuentas.es_correo(usuario_txt)
+        fila = None if es_cuenta else usuarios.buscar_usuario(usuario_txt, usuarios_con_estado())
+        cta = cuentas.verificar(DATA_RAIZ, usuario_txt, password) if es_cuenta and password and not hasta else None
         if not usuario_txt.strip() or not password:
             st.error("Escribe tu usuario y tu contraseña.")
         elif hasta:
             mins = max(1, int((hasta - datetime.now()).total_seconds() // 60) + 1)
             st.error(f"Demasiados intentos. Vuelve a intentar en {mins} min.")
-        elif fila is None or password != usuarios.password_login():
+        elif es_cuenta and cta is None or not es_cuenta and (fila is None or password != usuarios.password_login()):
             intentos_fallidos().setdefault(clave_u, []).append(datetime.now())
             st.error("Usuario o contraseña incorrectos.")
+        elif es_cuenta:
+            intentos_fallidos().pop(clave_u, None)
+            entrar_con_cuenta(cta, "sesion_iniciada")
+            st.rerun()
         elif not fila["activo"]:
             st.error("Esta cuenta está desactivada. Pide a HQ que la reactive.")
         else:
@@ -487,15 +532,29 @@ if "auth" not in st.session_state:
                                         "zona_id": fila["zona_id"], "usuario": fila["usuario"]}
             registrar("sesion_iniciada")
             st.rerun()
+    if st.button("¿Primera vez? Crea tu cuenta", type="tertiary", width="stretch"):
+        st.session_state["modo_login"] = "registro"
+        st.rerun()
     st.stop()
 
 auth_real = st.session_state["auth"]
-usuarios_df = usuarios_con_estado()
-_fila_actual = usuarios.buscar_usuario(auth_real["usuario"], usuarios_df)
-if _fila_actual is None or not _fila_actual["activo"]:
-    del st.session_state["auth"]
-    st.error("Esta cuenta fue desactivada. Pide a HQ que la reactive.")
-    st.stop()
+CUENTA = cuentas.buscar(DATA_RAIZ, auth_real["usuario"]) if auth_real.get("cuenta") else None
+if auth_real.get("cuenta"):
+    if CUENTA is None:
+        del st.session_state["auth"]
+        st.error("No encontramos tu cuenta. Vuelve a entrar.")
+        st.stop()
+    DATA_DIR = cuentas.carpeta_espacio(DATA_RAIZ, CUENTA["espacio"])
+    archivos.usar_espacio(DATA_DIR / "archivos")
+    usuarios_df = pd.DataFrame(columns=["usuario", "rol", "tienda_id", "zona_id", "activo", "email"])
+    _fila_actual = {"email": CUENTA["correo"], "activo": True}
+else:
+    usuarios_df = usuarios_con_estado()
+    _fila_actual = usuarios.buscar_usuario(auth_real["usuario"], usuarios_df)
+    if _fila_actual is None or not _fila_actual["activo"]:
+        del st.session_state["auth"]
+        st.error("Esta cuenta fue desactivada. Pide a HQ que la reactive.")
+        st.stop()
 
 tiendas_df = datos_fijos()["tiendas"]
 
@@ -563,7 +622,7 @@ def dialogo_legal() -> None:
 
 
 PAGINAS = {  # etiqueta -> ícono
-    "Resumen": "insights", "Horario": "calendar_month",
+    "Primeros pasos": "rocket_launch", "Resumen": "insights", "Horario": "calendar_month",
     "Avisos": "notifications", "Usuarios": "group",
     "Reglas legales": "gavel", "Datos": "upload_file",
 }
@@ -572,8 +631,9 @@ with st.sidebar:
     st.markdown("<div class='sb-marca'>Alvea</div><div class='sb-sub'>Autoservicio MX</div>",
                 unsafe_allow_html=True)
 
-    if auth_real["rol"] == "super_admin":
-        opciones = (["Toda la red"] + [f"Zona {i['nombre']}" for i in usuarios.ZONAS.values()]
+    if auth_real["rol"] == "super_admin" and not tiendas_df.empty:
+        opciones = (["Toda la red"]
+                    + ([] if CUENTA else [f"Zona {i['nombre']}" for i in usuarios.ZONAS.values()])
                     + [f"Tienda {t}" for t in tiendas_df["tienda_id"]])
         ver_como = st.selectbox("Ver como", opciones, key="ver_como",
                                 help="Muestra la app como la vería otro perfil. Tus permisos no cambian.")
@@ -583,7 +643,11 @@ with st.sidebar:
         elif ver_como.startswith("Tienda "):
             auth = {**auth_real, "rol": "manager", "tienda_id": ver_como[7:]}
 
-    if auth["rol"] == "manager":
+    if CUENTA:
+        grupos = {"": ["Primeros pasos", "Resumen", "Horario", "Avisos"] if auth["rol"] != "manager"
+                  else ["Primeros pasos", "Horario", "Avisos"],
+                  "Tu espacio": ["Datos", "Reglas legales"]}
+    elif auth["rol"] == "manager":
         grupos = {"": ["Horario", "Avisos"]}
     else:
         grupos = {"": ["Resumen", "Horario", "Avisos", "Usuarios"]}
@@ -602,6 +666,8 @@ with st.sidebar:
             etiqueta = p
             if p == "Avisos" and n_avisos:
                 etiqueta = f"Avisos · {n_avisos}"
+            if p == "Primeros pasos" and CUENTA and CUENTA["ob"] != "0":
+                etiqueta = f"Primeros pasos · {CUENTA['ob']} de {cuentas.PASOS_OB}"
             if st.button(etiqueta, key=f"nav_{p.replace(' ', '_')}", icon=f":material/{PAGINAS[p]}:",
                          width="stretch"):
                 st.session_state["pagina"] = p
@@ -611,7 +677,10 @@ with st.sidebar:
         f"<style>div[class*='st-key-nav_{pagina.replace(' ', '_')}'] button"
         "{background:#e6e6eb !important;font-weight:600;}</style>", unsafe_allow_html=True)
 
-    if auth_real["rol"] == "super_admin":
+    if CUENTA:
+        nombre, ambito = CUENTA["nombre"], f"{CUENTA['empresa']} · tu espacio"
+        ini = "".join(x[0] for x in CUENTA["nombre"].split()[:2]).upper() or "A"
+    elif auth_real["rol"] == "super_admin":
         nombre, ambito, ini = "Super Admin", "HQ · toda la red", "SA"
     elif auth_real["rol"] == "admin":
         zn = usuarios.ZONAS[auth_real["zona_id"]]["nombre"]
@@ -621,7 +690,10 @@ with st.sidebar:
     st.markdown(f"<div class='sb-usuario'><div class='sb-avatar'>{ini}</div><div>"
                 f"<div class='sb-nombre'>{nombre}</div><div class='sb-ambito'>{ambito}</div></div></div>",
                 unsafe_allow_html=True)
-    with st.popover("Mi correo", icon=":material/mail:", width="stretch"):
+    if CUENTA:
+        st.caption(f"Entras con {CUENTA['correo']}")
+    else:
+      with st.popover("Mi correo", icon=":material/mail:", width="stretch"):
         st.caption("Aquí te llegan los avisos urgentes de tu cuenta.")
         correo = st.text_input("Correo", value=_fila_actual.get("email") or "", key="mi_correo",
                                placeholder="nombre@empresa.mx", label_visibility="collapsed")
@@ -641,6 +713,8 @@ with st.sidebar:
             del st.session_state[k]
         st.rerun()
 
+if st.session_state.get("_toast"):
+    st.toast(st.session_state.pop("_toast"), icon=":material/check_circle:")
 if st.session_state.get("_pagina_auditada") != pagina:
     registrar("pagina_visitada", pagina)
     st.session_state["_pagina_auditada"] = pagina
@@ -726,6 +800,13 @@ def faltan_archivos(domingo: date) -> bool:
     faltan = [archivos.TIPOS[t]["nombre"] for t in ("tiendas", "plantilla", "trafico", "ventas") if d[t].empty]
     aviso(f"<b>Faltan archivos para la semana {fmt_rango_semana(domingo)}:</b> {', '.join(faltan)}. "
           "Súbelos en Datos.", "ojo")
+    con = [x for x in archivos.semanas_con_archivos() if SEMANA_MIN <= x <= FIN_HORIZONTE]
+    if con and not d["tiendas"].empty:
+        cerca = min(con, key=lambda x: abs((x - domingo).days))
+        if st.button(f"Ir a {fmt_rango_semana(cerca)}, que sí tiene archivos", icon=":material/arrow_forward:",
+                     key=f"ir_completa_{domingo.isoformat()}"):
+            ir_a_fecha(cerca)
+            st.rerun()
     return True
 
 
@@ -1221,7 +1302,10 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                 registrar("turno_reasignado", f"{nombre.get(emp, emp)} ({emp}) → {nuevo}, {f.isoformat()}",
                           alcance=("tienda", tienda_id))
                 if calif["calificacion"] in ("No recomendado", "Costoso", "Caro"):
-                    zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
+                    try:
+                        zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
+                    except ValueError:   # clúster que no está en ZONAS (archivos propios de una cuenta)
+                        zona = "sin_zona"
                     adm = usuarios_df[(usuarios_df["rol"] == "admin") & (usuarios_df["zona_id"] == zona)]
                     correo_adm = str(adm["email"].iloc[0]) if len(adm) and pd.notna(adm["email"].iloc[0]) else ""
                     notificaciones.crear_notificacion(
@@ -1460,18 +1544,12 @@ def pagina_reglas() -> None:
         st.dataframe(tabla, hide_index=True, width="stretch")
 
 
-def pagina_datos() -> None:
-    encabezado("Datos", "Los archivos con los que Alvea arma los horarios. Lo que subas cambia los horarios "
-                        "de todos.")
-    st.markdown("<div class='seccion'>Archivos en uso</div>", unsafe_allow_html=True)
-    st.dataframe(archivos.inventario(), hide_index=True, width="stretch")
+SET_EJEMPLO = archivos.RAIZ_REPO / "archivos_para_subir" / "semana4oct_2026_promo_cfo"
+MAX_ANTES_DESPUES = 12   # tiendas-semana que se calculan solas al aplicar (~1 min cada una)
 
-    st.markdown("<div class='seccion'>Subir archivos</div>", unsafe_allow_html=True)
-    st.caption("Uno o varios CSV. Alvea reconoce cuál es por sus columnas y la semana por sus fechas; "
-               "cada fila reemplaza solo lo mismo (misma tienda y día, mismo empleado y día) y lo demás se queda.")
-    n_up = st.session_state.get("_n_upload", 0)
-    subidos = st.file_uploader("Archivos", type=["csv", "gz"], accept_multiple_files=True,
-                               key=f"up_{n_up}", label_visibility="collapsed")
+
+def leer_subidos(subidos: list) -> list[tuple[str, str, pd.DataFrame]]:
+    """Lee y reconoce cada archivo; muestra qué es. Regresa los que se pueden aplicar."""
     listos = []
     for f in subidos or []:
         try:
@@ -1496,26 +1574,124 @@ def pagina_datos() -> None:
             detalle = f"{len(df):,} filas"
         aviso(f"<b>{f.name}</b> → {info['nombre']} · {detalle}", "bien")
         listos.append((f.name, tipo, df))
-    if listos and st.button(f"Aplicar {len(listos)} archivo{'s' if len(listos) != 1 else ''}", type="primary"):
-        orden = list(archivos.TIPOS)   # catálogos primero: el ausentismo usa la plantilla
-        hechos = []
-        for nombre_f, tipo, df in sorted(listos, key=lambda x: orden.index(x[1])):
-            r = archivos.cruzar(tipo, df)
-            semanas = r["semanas"]
-            hechos.append(f"{archivos.TIPOS[tipo]['nombre']}: {r['filas']:,} filas"
-                          + (f", {len(semanas)} semana{'s' if len(semanas) != 1 else ''}" if semanas else "")
-                          + f" ({r['reemplazadas']:,} reemplazadas)")
-        registrar("datos_cargados", "; ".join(hechos))
-        st.session_state["_n_upload"] = n_up + 1
-        st.session_state["_datos_hechos"] = hechos
-        st.rerun()
-    if st.session_state.get("_datos_hechos"):
-        aviso("<b>Listo.</b> " + " · ".join(st.session_state.pop("_datos_hechos"))
-              + ". Las tiendas y semanas que cambiaron se recalculan al abrirlas.", "bien")
+    return listos
 
-    st.markdown("<div class='seccion'>Descargar archivos</div>", unsafe_allow_html=True)
+
+def _cifras(rep: dict, tienda_id: str) -> dict:
+    a = rep["ahorro_semanal"]
+    turnos = turnos_vigentes(rep, tienda_id)
+    return {"ahorro": float(a["ahorro_total_mxn"]), "pct": float(a["ahorro_pct"]),
+            "pico": int(resumen_diario(rep, turnos)["pico_sin"].sum())}
+
+
+def _tocados(listos: list) -> list[tuple[str, date]]:
+    """(tienda, semana) que tocan los archivos: las tiendas que traen y las semanas de sus fechas."""
+    plantilla = datos_fijos()["plantilla"]
+    tienda_de = dict(zip(plantilla["empleado_id"].astype(str), plantilla["tienda_id"].astype(str)))
+    for _, tipo, df in listos:
+        if tipo == "plantilla":
+            tienda_de.update(zip(df["empleado_id"].astype(str), df["tienda_id"].astype(str)))
+    tiendas, semanas = set(), set()
+    for _, tipo, df in listos:
+        if "tienda_id" in df.columns:
+            tiendas |= set(df["tienda_id"].astype(str))
+        elif "empleado_id" in df.columns:
+            tiendas |= {tienda_de[e] for e in df["empleado_id"].astype(str) if e in tienda_de}
+        if "fecha" in df.columns:
+            semanas |= {archivos.domingo_de(x) for x in pd.to_datetime(df["fecha"]).dt.date}
+    if not semanas:                     # solo catálogos: se ve su efecto en la semana actual
+        semanas = {st.session_state["semana"]}
+    semanas = {d for d in semanas if SEMANA_MIN <= d <= FIN_HORIZONTE}
+    return sorted(((t, d) for t in tiendas for d in semanas), key=lambda x: (x[1], x[0]))
+
+
+def aplicar_archivos(listos: list) -> None:
+    """Aplica los archivos y arma el Antes/Después de lo que tocaron (solo si ya estaba calculado,
+    el Antes; el Después se calcula aquí mismo, hasta MAX_ANTES_DESPUES tiendas-semana)."""
+    pares = _tocados(listos)
+    antes = {}
+    for t, d in pares:
+        if archivos.semana_completa(datos_semana(d)) and esta_calculada(t, d):
+            antes[(t, d)] = _cifras(obtener_semana(t, d), t)
+    orden = list(archivos.TIPOS)   # catálogos primero: el ausentismo usa la plantilla
+    hechos = []
+    for _, tipo, df in sorted(listos, key=lambda x: orden.index(x[1])):
+        r = archivos.cruzar(tipo, df)
+        semanas = r["semanas"]
+        hechos.append(f"{archivos.TIPOS[tipo]['nombre']}: {r['filas']:,} filas"
+                      + (f", {len(semanas)} semana{'s' if len(semanas) != 1 else ''}" if semanas else "")
+                      + f" ({r['reemplazadas']:,} reemplazadas)")
+    registrar("datos_cargados", "; ".join(hechos))
+    listos_calc = [(t, d) for t, d in pares
+                   if archivos.semana_completa(datos_semana(d)) and t in set(datos_fijos()["tiendas"]["tienda_id"])]
+    filas = []
+    barra = st.progress(0.0) if listos_calc else None
+    for i, (t, d) in enumerate(listos_calc[:MAX_ANTES_DESPUES]):
+        barra.progress(i / min(len(listos_calc), MAX_ANTES_DESPUES),
+                       text=f"Recalculando tienda {t}, semana {fmt_rango_semana(d)} "
+                            f"({i + 1} de {min(len(listos_calc), MAX_ANTES_DESPUES)})")
+        despues = _cifras(obtener_semana(t, d), t)
+        marcar_calculada(t, d)
+        filas.append({"tienda": t, "semana": d, "antes": antes.get((t, d)), "despues": despues})
+    st.session_state["antes_despues"] = {"filas": filas, "hechos": hechos,
+                                         "sin_calcular": len(listos_calc) - len(filas)}
+
+
+def ver_en_horario(tienda_id: str, semana: date) -> None:
+    st.session_state.update({"tienda_sel": tienda_id, "hor_tienda": tienda_id, "pagina": "Horario",
+                             "cal_vista": "Semana"})
+    ir_a_fecha(max(semana, SEMANA_MIN))
+    st.rerun()
+
+
+def tabla_antes_despues(clave: str) -> None:
+    ad = st.session_state.get("antes_despues")
+    if not ad:
+        return
+    aviso("<b>Listo.</b> " + " · ".join(ad["hechos"]) + ".", "bien")
+    filas = ad["filas"]
+    if not filas:
+        st.caption("Los archivos no tocaron semanas con archivos completos todavía. "
+                   "Cuando estén Tiendas, Plantilla, Tráfico y Ventas de una semana, Alvea la calcula.")
+        return
+    st.markdown("<div class='seccion'>Antes y después</div>", unsafe_allow_html=True)
+    tabla = pd.DataFrame([{
+        "Tienda": f["tienda"], "Semana": fmt_rango_semana(f["semana"]),
+        "Antes": f"{mxn(f['antes']['ahorro'])} ({f['antes']['pct']:.1%})" if f["antes"] else "—",
+        "Después": f"{mxn(f['despues']['ahorro'])} ({f['despues']['pct']:.1%})",
+        "Cambio": mxn(f["despues"]["ahorro"] - f["antes"]["ahorro"]).replace("$-", "−$") if f["antes"] else "nuevo",
+        "Hora pico": "Cubierta" if f["despues"]["pico"] == 0 else f"Faltan {f['despues']['pico']} h",
+        "Meta 8%": "Sí" if f["despues"]["pct"] >= 0.08 else "No",
+    } for f in filas])
+    st.dataframe(tabla, hide_index=True, width="stretch")
+    st.caption("Ahorro de la semana contra el rol fijo de hoy. «Antes» sale vacío si esa tienda-semana no "
+               "se había calculado.")
+    if ad["sin_calcular"]:
+        st.caption(f"Otras {ad['sin_calcular']} tiendas-semana cambiaron; se calculan al abrirlas.")
+    c1, c2 = st.columns([3, 1], vertical_alignment="bottom")
+    opciones = {f"Tienda {f['tienda']} · {fmt_rango_semana(f['semana'])}": f for f in filas}
+    elegida = c1.selectbox("Ver en Horario", list(opciones), key=f"ad_sel_{clave}")
+    if c2.button("Abrir", key=f"ad_ver_{clave}", icon=":material/calendar_month:", width="stretch"):
+        ver_en_horario(opciones[elegida]["tienda"], opciones[elegida]["semana"])
+
+
+def subir_y_aplicar(clave: str) -> None:
+    n_up = st.session_state.get("_n_upload", 0)
+    subidos = st.file_uploader("Archivos", type=["csv", "gz"], accept_multiple_files=True,
+                               key=f"up_{clave}_{n_up}", label_visibility="collapsed")
+    listos = leer_subidos(subidos)
+    if listos and st.button(f"Aplicar {len(listos)} archivo{'s' if len(listos) != 1 else ''}", type="primary",
+                            key=f"aplicar_{clave}"):
+        aplicar_archivos(listos)
+        st.session_state["_n_upload"] = n_up + 1
+        if clave == "ob":
+            cuentas.fijar_paso(DATA_RAIZ, CUENTA["correo"], 3)
+        st.rerun()
+
+
+def descargas_formato(clave: str) -> None:
     sem = st.date_input("Semana", value=st.session_state["semana"], min_value=SEMANA_MIN,
-                        max_value=FIN_HORIZONTE, format="DD/MM/YYYY")
+                        max_value=FIN_HORIZONTE, format="DD/MM/YYYY", key=f"sem_desc_{clave}")
     dom = archivos.domingo_de(sem)
     cols = st.columns(5)
     for c, (tipo, info) in zip(cols, archivos.TIPOS.items()):
@@ -1523,28 +1699,190 @@ def pagina_datos() -> None:
         etiqueta = info["nombre"] + (f" · {dom.day:02d}/{dom.month:02d}" if info["semanal"] else "")
         c.download_button(etiqueta, df.to_csv(index=False).encode("utf-8"),
                           f"{tipo}_{dom.isoformat()}.csv" if info["semanal"] else f"{tipo}.csv", "text/csv",
-                          icon=":material/download:", width="stretch", help=", ".join(info["columnas"]))
+                          icon=":material/download:", width="stretch", help=", ".join(info["columnas"]),
+                          key=f"desc_{clave}_{tipo}")
+    if archivos.vacio() and datos_fijos()["tiendas"].empty:
+        st.caption("Tu espacio está vacío: los formatos bajan solo con encabezados.")
 
-    hay_subidos = archivos.SUBIDOS.exists() and any(p.is_file() for p in archivos.SUBIDOS.rglob("*"))
-    if hay_subidos and st.button("Volver a los archivos originales", icon=":material/restart_alt:"):
+
+def botones_espacio(clave: str) -> None:
+    """Volver al ejemplo / Vaciar (cuentas) o Volver a los originales (demo)."""
+    c1, c2, _ = st.columns([1.3, 1, 1.7])
+    if CUENTA:
+        cols = iter((c1, c2))
+        if archivos.hay_subidos() and next(cols).button("Volver a los archivos de ejemplo",
+                                                        icon=":material/restart_alt:", key=f"rest_{clave}",
+                                                        width="stretch"):
+            dialogo_restaurar()
+        if not (archivos.vacio() and not archivos.hay_subidos_reales()) and next(cols).button(
+                "Vaciar", icon=":material/delete_sweep:", key=f"vaciar_{clave}", width="stretch"):
+            dialogo_vaciar()
+    elif archivos.hay_subidos() and c1.button("Volver a los archivos originales", icon=":material/restart_alt:",
+                                              key=f"rest_{clave}", width="stretch"):
         dialogo_restaurar()
+
+
+def pagina_datos() -> None:
+    encabezado("Datos", "Los archivos con los que Alvea arma los horarios. "
+               + ("Lo que subas solo cambia tu espacio." if CUENTA else "Lo que subas cambia los horarios de todos."))
+    st.markdown("<div class='seccion'>Archivos en uso</div>", unsafe_allow_html=True)
+    if archivos.vacio():
+        st.caption("Espacio vacío: solo cuentan los archivos que subas.")
+    st.dataframe(archivos.inventario(), hide_index=True, width="stretch")
+
+    st.markdown("<div class='seccion'>Subir archivos</div>", unsafe_allow_html=True)
+    st.caption("Uno o varios CSV. Alvea reconoce cuál es por sus columnas y la semana por sus fechas; "
+               "cada fila reemplaza solo lo mismo (misma tienda y día, mismo empleado y día) y lo demás se queda.")
+    subir_y_aplicar("datos")
+    tabla_antes_despues("datos")
+
+    st.markdown("<div class='seccion'>Descargar archivos</div>", unsafe_allow_html=True)
+    descargas_formato("datos")
+    botones_espacio("datos")
+
+
+def fijar_espacio() -> None:
+    """Los diálogos se vuelven a correr solos, sin la parte de arriba del script: fija otra vez el espacio."""
+    archivos.usar_espacio(DATA_DIR / "archivos" if CUENTA else None)
 
 
 @st.dialog("Volver a los archivos originales")
 def dialogo_restaurar() -> None:
-    st.write("Se quita todo lo que se ha subido y los horarios vuelven a los archivos con los que arrancó Alvea. "
-             "Cambia los horarios de todos.")
+    fijar_espacio()
+    st.write(("Se quita todo lo que subiste y tu espacio vuelve a los archivos de ejemplo."
+              if CUENTA else "Se quita todo lo que se ha subido y los horarios vuelven a los archivos con los que "
+                             "arrancó Alvea. Cambia los horarios de todos."))
     c1, c2 = st.columns(2)
     if c1.button("Sí, quitar lo subido", type="primary", width="stretch"):
         n = archivos.restaurar_originales()
         registrar("datos_restablecidos", f"{n} archivos")
-        st.session_state["_datos_hechos"] = [f"se quitaron {n} archivos subidos"]
+        st.session_state["antes_despues"] = None
+        st.session_state["_toast"] = f"Se quitaron {n} archivos subidos."
         st.rerun()
     if c2.button("Cancelar", width="stretch"):
         st.rerun()
 
 
-RUTAS = {"Resumen": pagina_resumen, "Horario": pagina_horario,
+@st.dialog("Vaciar tu espacio")
+def dialogo_vaciar() -> None:
+    fijar_espacio()
+    st.write("Se quitan los archivos de ejemplo y todo lo que subiste. Para ver horarios tendrás que subir "
+             "Tiendas y Plantilla y, por semana, Tráfico, Ventas y Ausentismo. Empieza con 1 a 3 tiendas: "
+             "cada tienda tarda cerca de 1 min por semana la primera vez.")
+    c1, c2 = st.columns(2)
+    if c1.button("Sí, vaciar", type="primary", width="stretch"):
+        n = archivos.vaciar()
+        registrar("espacio_vaciado", f"{n} archivos subidos quitados")
+        st.session_state["antes_despues"] = None
+        st.session_state["_toast"] = "Tu espacio quedó vacío. Sube tus archivos para empezar."
+        st.rerun()
+    if c2.button("Cancelar", width="stretch"):
+        st.rerun()
+
+
+def pagina_primeros_pasos() -> None:
+    paso = int(CUENTA["ob"] or 0) or 1
+    nombre = CUENTA["nombre"].split()[0]
+    encabezado("Primeros pasos", f"Paso {paso} de {cuentas.PASOS_OB}")
+    st.progress(paso / cuentas.PASOS_OB)
+
+    def ir(n: int) -> None:
+        cuentas.fijar_paso(DATA_RAIZ, CUENTA["correo"], n)
+        registrar("primeros_pasos", f"paso {n}" if n else "terminado")
+        st.rerun()
+
+    def navegar(atras: bool = True, siguiente: str | None = "Siguiente", principal: bool = True) -> None:
+        c1, _, c3 = st.columns([1, 2, 1.2])
+        if atras and paso > 1 and c1.button("Atrás", icon=":material/arrow_back:", width="stretch"):
+            ir(paso - 1)
+        if siguiente and c3.button(siguiente, type="primary" if principal else "secondary", width="stretch"):
+            ir(paso + 1)
+
+    if paso == 1:
+        st.markdown(f"### Hola, {nombre}")
+        st.markdown(
+            "La reforma baja la jornada de **48 h en 2026 a 40 h en 2030**. Alvea arma el horario de cada "
+            "tienda cada semana para que **cueste al menos 8% menos** que el rol fijo de hoy, **sin dejar la "
+            "hora pico sin gente** y siempre dentro de la ley.\n\n"
+            "Tu espacio ya trae **archivos de ejemplo de 50 tiendas**, así que ves resultados desde ya. "
+            "En 3 pasos más vas a subir archivos y ver cómo Alvea rehace los horarios solo.")
+        tiles([("Tope legal hoy", f"{horas_regimen(SEMANA_MIN)} h", "por semana", "", True),
+               ("Meta de ahorro", "≥ 8%", "contra el rol fijo", ""),
+               ("En 2030", "40 h", "mismo proceso, tope menor", "")])
+        navegar(siguiente="Empezar")
+    elif paso == 2:
+        st.markdown("### Sube archivos")
+        st.markdown("Alvea usa cinco archivos: **Tiendas** y **Plantilla** (uno cada uno) y, por semana, "
+                    "**Tráfico**, **Ventas** y **Ausentismo**. Elige una:")
+        with st.container(border=True):
+            st.markdown("**A. Prueba rápida con el set de ejemplo** · promo de fin de semana en 3 tiendas "
+                        "(4–10 oct 2026): tráfico y ventas +35% el viernes y sábado, y 10 faltas más en T009. "
+                        "Tarda unos 3 min.")
+            c1, c2 = st.columns(2)
+            if c1.button("Aplicar el set de ejemplo", type="primary", icon=":material/bolt:", width="stretch",
+                         disabled=not SET_EJEMPLO.exists() or archivos.vacio()):
+                listos = [(p.name, archivos.detectar_tipo(pd.read_csv(p)), pd.read_csv(p))
+                          for p in sorted(SET_EJEMPLO.glob("*.csv"))]
+                aplicar_archivos(listos)
+                ir(3)
+            import io, zipfile
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                for p in sorted(SET_EJEMPLO.glob("*.csv")):
+                    z.write(p, p.name)
+            c2.download_button("Descargar el set (zip)", buf.getvalue(), "Alvea_set_ejemplo_4oct.zip",
+                               "application/zip", icon=":material/download:", width="stretch")
+            if archivos.vacio():
+                st.caption("Tu espacio está vacío: el set de ejemplo necesita los archivos de ejemplo. "
+                           "Usa «Volver a los archivos de ejemplo» abajo o sube los tuyos.")
+        with st.container(border=True):
+            st.markdown("**B. Sube tus archivos** · baja los formatos, llénalos y súbelos. Cada fila reemplaza "
+                        "solo lo mismo (misma tienda y día); lo demás se queda.")
+            with st.expander("Descargar formatos"):
+                descargas_formato("ob")
+            subir_y_aplicar("ob")
+        with st.container(border=True):
+            st.markdown("**C. Desde cero** · vacía tu espacio y sube solo lo tuyo. Empieza con 1 a 3 tiendas.")
+            botones_espacio("ob")
+        navegar(siguiente="Saltar este paso", principal=False)
+    elif paso == 3:
+        st.markdown("### Así lo rehízo Alvea")
+        if st.session_state.get("antes_despues"):
+            st.markdown("Solo se recalcularon las tiendas que tocaron tus archivos; las demás siguen igual. "
+                        "Abre cualquiera en Horario para ver quién trabaja en cada turno.")
+            tabla_antes_despues("ob")
+        else:
+            aviso("Aún no aplicas archivos en esta sesión. Regresa al paso 2 o sigue: puedes subirlos "
+                  "cuando quieras en <b>Datos</b>.", "ojo")
+        navegar()
+    else:
+        st.markdown("### Qué sigue")
+        st.markdown(
+            "- **Resumen**: ahorro de la semana de todas tus tiendas y cuáles llegan a la meta.\n"
+            "- **Horario**: mes, semana y día de cada tienda; en Día puedes mover a alguien de turno y "
+            "Alvea califica el cambio.\n"
+            "- **Datos**: sube más archivos, bájalos, vuelve a los de ejemplo o vacía tu espacio.\n"
+            "- **Reglas legales**: cómo baja la jornada cada año y de dónde sale cada regla.\n\n"
+            "Toca **Jornada 48 h · 2026** en cualquier fecha para ver el mismo horario con el tope de otro año.")
+        c1, _, c3 = st.columns([1, 2, 1.2])
+        if c1.button("Atrás", icon=":material/arrow_back:", width="stretch"):
+            ir(3)
+        if c3.button("Ir al Resumen", type="primary", width="stretch"):
+            cuentas.fijar_paso(DATA_RAIZ, CUENTA["correo"], 0)
+            registrar("primeros_pasos", "terminado")
+            st.session_state["pagina"] = "Resumen"
+            st.rerun()
+
+
+RUTAS = {"Primeros pasos": pagina_primeros_pasos, "Resumen": pagina_resumen, "Horario": pagina_horario,
          "Avisos": pagina_avisos, "Usuarios": pagina_usuarios,
          "Reglas legales": pagina_reglas, "Datos": pagina_datos}
-RUTAS[pagina]()
+if (CUENTA and datos_fijos()["tiendas"].empty and pagina in ("Resumen", "Horario")):
+    encabezado(pagina, "")
+    aviso("<b>Tu espacio está vacío.</b> Sube Tiendas y Plantilla y, por semana, Tráfico, Ventas y Ausentismo "
+          "en <b>Datos</b>, o vuelve a los archivos de ejemplo.", "ojo")
+    if st.button("Ir a Datos", type="primary"):
+        st.session_state["pagina"] = "Datos"
+        st.rerun()
+else:
+    RUTAS[pagina]()

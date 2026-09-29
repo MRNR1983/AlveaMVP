@@ -3,6 +3,21 @@ import re
 import time
 from playwright.sync_api import sync_playwright
 
+# Fechas relativas a hoy (hora de México), para que el barrido no caduque.
+from datetime import datetime as _dt, timedelta as _td
+from zoneinfo import ZoneInfo as _Z
+_MES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+        "noviembre", "diciembre"]
+_COR = ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+HOY = _dt.now(_Z("America/Mexico_City")).date()
+DOM = HOY - _td(days=(HOY.weekday() + 1) % 7)
+_SAB = DOM + _td(days=6)
+RANGO = (f"{DOM.day}–{_SAB.day} {_COR[_SAB.month]} {_SAB.year}" if DOM.month == _SAB.month
+         else f"{DOM.day} {_COR[DOM.month]} – {_SAB.day} {_COR[_SAB.month]} {_SAB.year}")
+MES_HOY = f"{_MES[HOY.month].capitalize()} {HOY.year}"
+_M2 = (HOY.month + 1) % 12 + 1; _A2 = HOY.year + (HOY.month + 2 > 12)
+MES_MAS2 = f"{_MES[_M2].capitalize()} {_A2}"
+DIA_SEM = DOM + _td(days=2) if DOM + _td(days=2) >= HOY else HOY   # un día visible de esta semana
 URL = "http://localhost:8599"
 PW = "3.14159265358"
 R = []
@@ -60,37 +75,37 @@ def entrar(b, u):
 def navegacion(pg, rol, clave_sem="sem"):
     """Hoy, flechas, vistas y año en Horario."""
     lateral(pg, "Horario")
-    t0 = tit(pg); paso(f"{rol} · Horario abre", pg, "sep 2026" in t0, t0)
+    t0 = tit(pg); paso(f"{rol} · Horario abre", pg, _COR[HOY.month] in t0 and str(HOY.year) in t0, t0)
     btn_key(pg, f"navf_next_{clave_sem}").click(); pg.wait_for_timeout(700); quieto(pg)
-    t1 = tit(pg); paso(f"{rol} · › semana", pg, t1 != t0 and "oct" in t1, t1)
+    t1 = tit(pg); paso(f"{rol} · › semana", pg, t1 != t0, t1)
     btn_key(pg, f"navf_prev_{clave_sem}").click(); pg.wait_for_timeout(700); quieto(pg)
     t2 = tit(pg); paso(f"{rol} · ‹ semana", pg, t2 == t0, t2)
-    vista(pg, "Día"); td = tit(pg); paso(f"{rol} · Día", pg, "septiembre" in td, td)
+    vista(pg, "Día"); td = tit(pg); paso(f"{rol} · Día", pg, _MES[HOY.month] in td, td)
     btn_key(pg, "navf_next_dia").click(); pg.wait_for_timeout(700); quieto(pg)
     td2 = tit(pg); paso(f"{rol} · › día", pg, td2 != td, td2)
     btn_key(pg, "navf_prev_dia").click(); pg.wait_for_timeout(700); quieto(pg)
     paso(f"{rol} · ‹ día", pg, tit(pg) == td, tit(pg))
-    vista(pg, "Mes"); tm = tit(pg); paso(f"{rol} · Mes", pg, "Septiembre 2026" in tm, tm)
+    vista(pg, "Mes"); tm = tit(pg); paso(f"{rol} · Mes", pg, MES_HOY in tm, tm)
     btn_key(pg, "navf_next_mes").click(); pg.wait_for_timeout(700); quieto(pg)
     btn_key(pg, "navf_next_mes").click(); pg.wait_for_timeout(700); quieto(pg)
-    tm2 = tit(pg); paso(f"{rol} · › mes ×2", pg, "Noviembre 2026" in tm2, tm2)
-    vista(pg, "Semana"); ts = tit(pg); paso(f"{rol} · Semana sigue al mes", pg, "nov" in ts, ts)
+    tm2 = tit(pg); paso(f"{rol} · › mes ×2", pg, MES_MAS2 in tm2, tm2)
+    vista(pg, "Semana"); ts = tit(pg); paso(f"{rol} · Semana sigue al mes", pg, _COR[_M2] in ts, ts)
     vista(pg, "Mes")
     btn_key(pg, "navf_hoy_mes").click(); pg.wait_for_timeout(700); quieto(pg)
-    th = tit(pg); paso(f"{rol} · Hoy en Mes", pg, "Septiembre 2026" in th, th)
-    pg.locator("[class*='st-key-mes_2026-09-28'] button").first.click(); pg.wait_for_timeout(700); quieto(pg)
-    tc = tit(pg); paso(f"{rol} · clic en un día del mes abre Día", pg, "28 de septiembre" in tc, tc)
+    th = tit(pg); paso(f"{rol} · Hoy en Mes", pg, MES_HOY in th, th)
+    pg.locator(f"[class*='st-key-mes_{HOY.isoformat()}'] button").first.click(); pg.wait_for_timeout(700); quieto(pg)
+    tc = tit(pg); paso(f"{rol} · clic en un día del mes abre Día", pg, f"{HOY.day} de {_MES[HOY.month]}" in tc, tc)
     vista(pg, "Semana")
     btn_key(pg, "navf_hoy_sem").click(); pg.wait_for_timeout(700); quieto(pg)
-    paso(f"{rol} · Hoy en Semana", pg, "20–26 sep 2026" in tit(pg), tit(pg))
+    paso(f"{rol} · Hoy en Semana", pg, RANGO in tit(pg), tit(pg))
     pg.get_by_role("button", name="Jornada 48 h · 2026").click(); pg.wait_for_timeout(800)
     pg.get_by_role("button", name="2030 · 40 h").click(); pg.wait_for_timeout(800); quieto(pg)
     t30 = tit(pg); paso(f"{rol} · salto a 2030", pg, "2030" in t30 and pg.get_by_role("button", name="Jornada 40 h · 2030").count(), t30)
     btn_key(pg, "navf_hoy_sem").click(); pg.wait_for_timeout(700); quieto(pg)
-    paso(f"{rol} · Hoy regresa desde 2030", pg, "20–26 sep 2026" in tit(pg), tit(pg))
+    paso(f"{rol} · Hoy regresa desde 2030", pg, RANGO in tit(pg), tit(pg))
     # botón de día en la cabecera de la semana
-    pg.locator("[class*='st-key-sem_2026-09-22'] button").first.click(); pg.wait_for_timeout(700); quieto(pg)
-    paso(f"{rol} · clic en 'Mar 22' abre ese día", pg, "22 de septiembre" in tit(pg), tit(pg))
+    pg.locator(f"[class*='st-key-sem_{DIA_SEM.isoformat()}'] button").first.click(); pg.wait_for_timeout(700); quieto(pg)
+    paso(f"{rol} · clic en un día de la semana abre ese día", pg, f"{DIA_SEM.day} de {_MES[DIA_SEM.month]}" in tit(pg), tit(pg))
     vista(pg, "Semana")
     # descargas y plegables
     with pg.expect_download() as d1:
@@ -159,7 +174,7 @@ with sync_playwright() as p:
     ver = a.get_by_role("button", name="Ver día")
     if ver.count():
         ver.first.click(); a.wait_for_timeout(800); quieto(a)
-        paso("Admin · Ver día desde aviso", a, "septiembre" in tit(a), tit(a))
+        paso("Admin · Ver día desde aviso", a, any(m in tit(a) for m in _MES[1:]), tit(a))
         lateral(a, "Avisos")
     a.get_by_text("Historial: quién hizo qué y cuándo").click(); a.wait_for_timeout(1000)
     paso("Admin · Historial", a, a.get_by_text("Qué pasó").count() > 0)

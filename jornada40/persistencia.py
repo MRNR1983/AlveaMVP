@@ -25,8 +25,8 @@ from pathlib import Path
 import requests
 
 ARCHIVOS = ("auditoria.csv", "notificaciones.csv", "notificaciones_leidas.csv",
-            "ediciones.csv", "usuarios_estado.csv")
-CARPETAS = ("archivos/",)   # todo lo que haya debajo también se respalda (archivos subidos)
+            "ediciones.csv", "usuarios_estado.csv", "cuentas.csv")
+CARPETAS = ("archivos/", "espacios/")   # todo lo de debajo también se respalda (archivos subidos, espacios)
 RAIZ_DATOS = Path("data")
 _API = "https://api.github.com"
 _ESPERA_SEG = 4.0          # junta varias escrituras seguidas en una sola subida
