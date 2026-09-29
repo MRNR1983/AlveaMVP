@@ -1,10 +1,11 @@
 """Precalcula semanas (todas las tiendas de los archivos) y las deja en precalculado/<version>/.
 
 Uso:  python scripts/precalcular.py [AAAA-MM-DD ...]   (domingos; sin argumentos, las de la demo)
-Es reanudable: salta las tiendas-semana que ya existen.
+Es reanudable: salta las tiendas-semana que ya existen. TIENDAS=T001,T002 limita a esas tiendas.
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 from datetime import date
@@ -45,8 +46,9 @@ def main() -> None:
     tareas = []
     for d in domingos:
         datos = _datos_semana(d)
-        tareas += [(t, d) for t in datos["tiendas"]["tienda_id"]
-                   if not precalculado.existe(VERSION, t, d, archivos.huella(datos, t))]
+        solo = [x for x in os.environ.get("TIENDAS", "").split(",") if x]
+        tareas += [(t, d) for t in datos["tiendas"]["tienda_id"] if (not solo or t in solo)
+                   and not precalculado.existe(VERSION, t, d, archivos.huella(datos, t))]
     print(f"{len(tareas)} tienda-semanas por calcular (versión {VERSION})", flush=True)
     with Pool(2) as pool:
         for i, msg in enumerate(pool.imap_unordered(_uno, tareas), 1):

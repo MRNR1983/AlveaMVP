@@ -811,9 +811,22 @@ def pagina_horario() -> None:
 
 def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
     resumen: dict = {}
-    for dom in {calendario.semana_de(f)[0] for fila in calendario.matriz_mes(anio, mes) for f in fila if f}:
-        if SEMANA_MIN <= dom <= FIN_HORIZONTE and archivos.semana_completa(datos_semana(dom)) \
-                and esta_calculada(tienda_id, dom):
+    semanas = sorted(d for d in {calendario.semana_de(f)[0] for fila in calendario.matriz_mes(anio, mes) for f in fila if f}
+                     if SEMANA_MIN <= d <= FIN_HORIZONTE and archivos.semana_completa(datos_semana(d)))
+    pendientes = [d for d in semanas if not esta_calculada(tienda_id, d)]
+    if pendientes:
+        c1, c2 = st.columns([4, 1], vertical_alignment="center")
+        c1.markdown(f"<div class='leyenda'>Faltan {len(pendientes)} semana{'s' if len(pendientes) != 1 else ''} de "
+                    f"este mes por calcular (cerca de 1 min cada una, solo la primera vez).</div>", unsafe_allow_html=True)
+        if c2.button("Calcular el mes", key=f"calc_mes_{anio}_{mes}", icon=":material/calendar_month:", width="stretch"):
+            barra = st.progress(0.0)
+            for i, d in enumerate(pendientes):
+                barra.progress(i / len(pendientes), text=f"Semana {fmt_rango_semana(d)} ({i + 1} de {len(pendientes)})")
+                calcular_semana_tienda(tienda_id, d, huella_de(tienda_id, d))
+                marcar_calculada(tienda_id, d)
+            st.rerun()
+    for dom in semanas:
+        if dom not in pendientes:
             rep = obtener_semana(tienda_id, dom)
             if rep["status"] != "INFEASIBLE":
                 for r in resumen_diario(rep, turnos_vigentes(rep, tienda_id)).itertuples(index=False):
@@ -844,7 +857,7 @@ def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
         "<span class='punto' style='background:#1baf7a'></span>con ahorro y pico cubierto&nbsp;&nbsp;&nbsp;"
         "<span class='punto' style='background:#eb6834'></span>falta gente en hora pico&nbsp;&nbsp;&nbsp;"
         "<span class='punto' style='background:#eda100'></span>más caro que el rol fijo&nbsp;&nbsp;&nbsp;"
-        "<span class='punto' style='background:#d2d2d7'></span>sin calcular (toca el día)</div>",
+        "<span class='punto' style='background:#d2d2d7'></span>sin calcular (toca el día o «Calcular el mes»)</div>",
         unsafe_allow_html=True)
 
 
