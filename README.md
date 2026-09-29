@@ -20,7 +20,7 @@ cómo se programaría hoy.
 | | Archivos para probar | [archivos_para_subir/](archivos_para_subir/README.md), con el resultado esperado de cada set |
 | 3 | **Demo en llamada (45 min)** | [Guion de la demo](docs/guion_demo.md) |
 
-**Resultado:** semana 20–26 sep 2026 (48 h): **29.0% de ahorro** en las 50 tiendas, 50 de 50 arriba de 8% y **0 horas pico sin cubrir**. Semana 22–28 sep 2030 (40 h): **21.7%**, 50 de 50 arriba de 8%, 0 horas pico sin cubrir.
+**Resultado** (la app abre en la semana actual). Semana 27 sep – 3 oct 2026 (48 h): **27.9% de ahorro** en las 50 tiendas ($1,831,945), 50 de 50 arriba de 8% y 1 hora pico sin cubrir en toda la red. La misma semana en 2030 (40 h, tocando «Jornada 48 h · 2026» → 2030): **20.7%** ($1,468,146), 50 de 50 arriba de 8%, 0 horas pico sin cubrir. Semanas de referencia de la comparación con el PDF (20–26 sep 2026 y 22–28 sep 2030): 29.0% y 21.7%.
 
 ## Acceso / credenciales de login
 
