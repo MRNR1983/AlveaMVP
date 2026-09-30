@@ -109,3 +109,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:01:21,SADMIN,super_admin,red,,sesion_cerrada,
 2026-09-30T13:01:39,Man001,manager,tienda,T001,sesion_iniciada,
 2026-09-30T13:01:39,Man001,manager,tienda,T001,pagina_visitada,Horario
+2026-09-30T13:02:15,Man001,manager,tienda,T001,turno_calificado,No recomendado (costo −$310)
+2026-09-30T13:02:15,Man001,manager,tienda,T001,turno_reasignado,"Patricia Aguilar (E00011) → Descanso, 2026-09-30"
