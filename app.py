@@ -25,7 +25,7 @@ import pandas as pd
 import streamlit as st
 
 from jornada40 import (archivos, auditoria, calendario, costos_ahorro, cuentas, demanda_personal,
-                        escenario_base, notificaciones, optimizador, persistencia, precalculado, reglas, usuarios, vista_red)
+                        escenario_base, nomina, notificaciones, optimizador, persistencia, precalculado, reglas, usuarios, vista_red)
 from jornada40 import semana as semana_calc
 
 # Streamlit Cloud recarga app.py en cada deploy, pero puede dejar en memoria la
@@ -35,7 +35,8 @@ from jornada40 import semana as semana_calc
 def _asegurar_modulos_al_dia(version: str) -> None:
     import importlib
     import sys
-    if getattr(optimizador, "VERSION_MODELO", None) == version and hasattr(archivos, "usar_espacio"):
+    if (getattr(optimizador, "VERSION_MODELO", None) == version and hasattr(archivos, "usar_espacio")
+            and hasattr(costos_ahorro, "nomina") and hasattr(semana_calc, "nomina")):
         return
     for nombre in sorted([m for m in sys.modules if m.startswith("jornada40.")]):
         importlib.reload(sys.modules[nombre])
@@ -52,6 +53,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
 VERSION_MODELO = "2026-09-25-determinista"
+VERSION_COSTOS = "2026-09-30-piso-salarial"   # cambia el costo, no el horario: los precalculados siguen sirviendo
 _asegurar_modulos_al_dia(VERSION_MODELO)
 archivos.usar_espacio(None)   # cada corrida arranca en la demo compartida
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
@@ -108,15 +110,15 @@ def mxn(v: float) -> str:
 def puente_ahorro(ah: dict) -> list[tuple[str, float]]:
     """Partidas del ahorro que suman EXACTO el ahorro total.
 
-    Las partidas de horas extra y gente de más son estimaciones (horas × valor hora
-    promedio); el ahorro total es la diferencia real de costos. Lo que no explican
-    esas dos (mezcla de turnos, horas ordinarias, redondeos) va en "Otros ajustes"
+    El sueldo de tiempo completo se paga igual con o sin Alvea (nomina.py), así que el
+    ahorro en dinero es la hora extra que deja de pagarse. La partida de extra es una
+    estimación (horas × valor hora promedio); lo que no explica va en "Otros ajustes"
     para que el desglose cuadre y nada quede escondido.
     """
-    extra, sobre = ah["costo_extra_evitado_mxn"], ah["costo_sobrestaffing_evitado_mxn"]
+    extra = ah["costo_extra_evitado_mxn"]
     penal = ah.get("penalizacion_subdotacion_no_cubierta_mxn", 0.0) or 0.0
-    partidas = [("Horas extra evitadas", extra), ("Gente de más evitada", sobre),
-                ("Otros ajustes (mezcla de turnos y horas ordinarias)", ah["ahorro_total_mxn"] - extra - sobre + penal)]
+    partidas = [("Horas extra evitadas", extra),
+                ("Otros ajustes (valor hora por persona y redondeos)", ah["ahorro_total_mxn"] - extra + penal)]
     if penal:
         partidas.append(("Penalización por pico sin cubrir", -penal))
     return partidas
@@ -158,7 +160,7 @@ def huella_de(tienda_id: str, domingo: date) -> str:
 
 @st.cache_data(show_spinner=False, max_entries=400)
 def calcular_semana_tienda(tienda_id: str, domingo: date, huella: str,
-                           version_modelo: str = VERSION_MODELO) -> dict:
+                           version_modelo: str = VERSION_MODELO, version_costos: str = VERSION_COSTOS) -> dict:
     """Base (cómo se programa hoy) + propuesta del optimizador + techo, 1 tienda, 1 semana.
     La huella identifica sus archivos: si ya se resolvió con esos mismos archivos, se abre al instante."""
     reporte, _, _ = semana_calc.calcular(tienda_id, domingo, datos_semana(domingo), TIEMPO_LIMITE_SEG,
@@ -962,20 +964,10 @@ def vista_mes(tienda_id: str, anio: int, mes: int) -> None:
 
 
 def costo_por_persona(rep: dict, turnos: pd.DataFrame) -> dict:
-    """Costo semanal por persona del horario vigente, pagando en orden legal."""
-    fref = date(rep["anio"], 1, 1)
-    tope = reglas.regla_vigente("jornada_ordinaria_semanal_horas", fref)
-    t_dbl = reglas.regla_vigente("extra_tope_doble_semanal_horas", fref)
-    m_dbl = reglas.regla_vigente("pago_extra_doble_multiplicador", fref)
-    m_tpl = reglas.regla_vigente("pago_extra_triple_multiplicador", fref)
-    sal = dict(zip(rep["plantilla"]["empleado_id"], rep["plantilla"]["salario_diario_mxn"]))
-    h = (turnos["hora_fin"] - turnos["hora_inicio"]).groupby(turnos["empleado_id"]).sum()
-    out = {}
-    for e, hh in h.items():
-        vh = sal[e] / (tope / 6)
-        o = min(hh, tope); dbl = min(max(0, hh - tope), t_dbl); tpl = max(0, hh - tope - t_dbl)
-        out[e] = o * vh + dbl * vh * m_dbl + tpl * vh * m_tpl
-    return out
+    """Costo semanal de cada persona de la plantilla con el horario vigente (ver nomina.py:
+    tiempo completo cobra su semana aunque trabaje menos horas; la extra en orden legal)."""
+    pagos = nomina.costo_por_empleado(nomina.horas_de_turnos(turnos), rep["plantilla"], rep["anio"])
+    return {e: p["costo_mxn"] for e, p in pagos.items()}
 
 
 def resumen_diario(rep: dict, turnos: pd.DataFrame) -> pd.DataFrame:
@@ -990,6 +982,8 @@ def resumen_diario(rep: dict, turnos: pd.DataFrame) -> pd.DataFrame:
     h_sem = t.groupby("empleado_id")["h"].transform("sum")
     t["costo"] = t["empleado_id"].map(cp) * t["h"] / h_sem
     alvea = t.groupby("fecha")["costo"].sum()
+    sin_turnos = sum(v for e, v in cp.items() if e not in set(t["empleado_id"]))
+    alvea = alvea.reindex(dias, fill_value=0.0) + sin_turnos / 7
     personas = t.groupby("fecha")["empleado_id"].nunique()
     # Rol fijo (base)
     base = rep["base"]
@@ -1075,6 +1069,7 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
         f"Costo rol fijo de hoy: {mxn(ah['costo_base_mxn'])} MXN\nCosto con Alvea: {mxn(ah['costo_propuesta_mxn'])} MXN\n"
         f"Ahorro: {mxn(ah['ahorro_total_mxn'])} MXN ({ah['ahorro_pct']:.1%})\n"
         + "".join(f"  {c}: {mxn(v)} MXN\n" for c, v in puente_ahorro(ah)) +
+        f"Capacidad liberada (sueldo pagado sin programar): {rep['propuesta'].get('horas_capacidad_liberada') or 0:,.0f} h\n"
         f"Captura del ahorro máximo teórico: {br.get('pct_del_techo_capturado', 0):.0%}\n")
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
     d1, d2, _ = st.columns([1, 1, 2])
@@ -1093,6 +1088,11 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
             texto += f"{signo}{mxn(abs(v))} {c[0].lower() + c[1:]}"
         aviso(f"{meta}: ahorra {mxn(ah['ahorro_total_mxn'])} ({ah['ahorro_pct']:.1%}) esta semana = {texto}.",
               "bien" if ah["cumple_minimo_8pct"] else "ojo")
+        cap = rep["propuesta"].get("horas_capacidad_liberada") or 0
+        if cap:
+            aviso(f"<b>Capacidad liberada: {cap:,.0f} h.</b> Horas de sueldo que se pagan igual pero que "
+                  "no hizo falta programar. No son ahorro en dinero: son la holgura que absorbe la baja de "
+                  "jornada sin contratar.", "bien")
         base_rep = rep["base"]
         filas = pd.DataFrame([
             {"Concepto": "Horas ordinarias", "Rol fijo de hoy": base_rep.get("horas_ordinarias_totales", 0),
@@ -1461,7 +1461,10 @@ def pagina_resumen() -> None:
     st.markdown("<div class='seccion'>Ahorro por tienda</div>", unsafe_allow_html=True)
     st.altair_chart((barras + meta).properties(height=max(160, 28 * len(rk))).configure_view(strokeWidth=0),
                     width="stretch")
-    st.caption("Línea punteada = meta mínima de 8%.")
+    cap_red = sum((r["propuesta"].get("horas_capacidad_liberada") or 0) for r in resultados.values())
+    st.caption("Línea punteada = meta mínima de 8%. El ahorro es dinero que deja de salir (sobre todo horas "
+               f"extra); el sueldo de tiempo completo se paga igual. Capacidad liberada en estas tiendas: "
+               f"{cap_red:,.0f} h por semana, holgura para absorber la baja de jornada sin contratar.")
     with st.expander("Ver tabla"):
         st.dataframe(rk[["tienda_id", "cluster_id", "formato", "ahorro_mxn", "ahorro_pct", "Estado"]],
                      hide_index=True, width="stretch",
