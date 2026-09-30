@@ -124,3 +124,4 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:16:23,Man001,manager,tienda,T001,cambio_deshecho,Jorge Vargas (E00035) · 2026-09-30
 2026-09-30T13:16:23,Man001,manager,tienda,T001,turno_calificado,Neutral (costo +$0)
 2026-09-30T13:19:13,Man001,manager,tienda,T001,cambio_deshecho,Fernanda Núñez (E00007) · 2026-09-30
+2026-09-30T13:20:49,Man001,manager,tienda,T001,sesion_cerrada,
