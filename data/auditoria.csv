@@ -121,3 +121,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:15:56,Man001,manager,tienda,T001,turno_reasignado,"Fernanda Núñez (E00007) → Cierre, 2026-09-30"
 2026-09-30T13:16:12,Man001,manager,tienda,T001,turno_calificado,No recomendado (costo −$282)
 2026-09-30T13:16:12,Man001,manager,tienda,T001,turno_reasignado,"Jorge Vargas (E00035) → Descanso, 2026-09-30"
+2026-09-30T13:16:23,Man001,manager,tienda,T001,cambio_deshecho,Jorge Vargas (E00035) · 2026-09-30
+2026-09-30T13:16:23,Man001,manager,tienda,T001,turno_calificado,Neutral (costo +$0)
