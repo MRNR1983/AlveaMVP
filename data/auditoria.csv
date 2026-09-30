@@ -103,3 +103,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T12:56:02,SADMIN,super_admin,red,,pagina_visitada,Resumen
 2026-09-30T12:56:35,SADMIN,super_admin,red,,pagina_visitada,Horario
 2026-09-30T12:58:12,SADMIN,super_admin,red,,pagina_visitada,Avisos
+2026-09-30T12:58:24,SADMIN,super_admin,red,,pagina_visitada,Usuarios
+2026-09-30T12:58:27,SADMIN,super_admin,red,,pagina_visitada,Reglas legales
