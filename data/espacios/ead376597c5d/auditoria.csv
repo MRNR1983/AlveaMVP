@@ -5,3 +5,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:26:14,mauricio.r.navarro@gmail.com,super_admin,red,,datos_cargados,"Tráfico por hora: 504 filas, 1 semana (504 reemplazadas); Ventas por hora: 504 filas, 1 semana (504 reemplazadas); Ausentismo: 10 filas, 1 semana (5 reemplazadas)"
 2026-09-30T13:27:19,mauricio.r.navarro@gmail.com,super_admin,red,,primeros_pasos,paso 3
 2026-09-30T13:29:04,mauricio.r.navarro@gmail.com,super_admin,red,,primeros_pasos,paso 4
+2026-09-30T13:29:13,mauricio.r.navarro@gmail.com,super_admin,red,,primeros_pasos,terminado
+2026-09-30T13:29:13,mauricio.r.navarro@gmail.com,super_admin,red,,pagina_visitada,Resumen
