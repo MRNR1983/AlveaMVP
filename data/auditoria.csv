@@ -116,3 +116,4 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:13:39,Man001,manager,tienda,T001,cambio_deshecho,Patricia Aguilar (E00011) · 2026-09-30
 2026-09-30T13:15:10,Man001,manager,tienda,T001,turno_calificado,No recomendado (costo +$0)
 2026-09-30T13:15:10,Man001,manager,tienda,T001,turno_reasignado,"Fernanda Sánchez (E00023) → Cierre, 2026-09-30"
+2026-09-30T13:15:19,Man001,manager,tienda,T001,cambio_deshecho,Fernanda Sánchez (E00023) · 2026-09-30
