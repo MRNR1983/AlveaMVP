@@ -113,3 +113,4 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:02:15,Man001,manager,tienda,T001,turno_reasignado,"Patricia Aguilar (E00011) → Descanso, 2026-09-30"
 2026-09-30T13:02:31,Man001,manager,tienda,T001,pagina_visitada,Avisos
 2026-09-30T13:02:38,Man001,manager,tienda,T001,pagina_visitada,Horario
+2026-09-30T13:13:39,Man001,manager,tienda,T001,cambio_deshecho,Patricia Aguilar (E00011) · 2026-09-30
