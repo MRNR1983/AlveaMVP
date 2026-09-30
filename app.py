@@ -102,7 +102,24 @@ def fmt_dia(f: date) -> str:
 
 
 def mxn(v: float) -> str:
-    return f"${v:,.0f}"
+    return f"${v:,.0f}" if v >= 0 else f"−${-v:,.0f}"
+
+
+def puente_ahorro(ah: dict) -> list[tuple[str, float]]:
+    """Partidas del ahorro que suman EXACTO el ahorro total.
+
+    Las partidas de horas extra y gente de más son estimaciones (horas × valor hora
+    promedio); el ahorro total es la diferencia real de costos. Lo que no explican
+    esas dos (mezcla de turnos, horas ordinarias, redondeos) va en "Otros ajustes"
+    para que el desglose cuadre y nada quede escondido.
+    """
+    extra, sobre = ah["costo_extra_evitado_mxn"], ah["costo_sobrestaffing_evitado_mxn"]
+    penal = ah.get("penalizacion_subdotacion_no_cubierta_mxn", 0.0) or 0.0
+    partidas = [("Horas extra evitadas", extra), ("Gente de más evitada", sobre),
+                ("Otros ajustes (mezcla de turnos y horas ordinarias)", ah["ahorro_total_mxn"] - extra - sobre + penal)]
+    if penal:
+        partidas.append(("Penalización por pico sin cubrir", -penal))
+    return partidas
 
 
 # ---------------------------------------------------------------------------
@@ -1057,8 +1074,7 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
         f"({anio_regimen(semana)})\n\n{rep['resumen_ejecutivo']}\n\n"
         f"Costo rol fijo de hoy: {mxn(ah['costo_base_mxn'])} MXN\nCosto con Alvea: {mxn(ah['costo_propuesta_mxn'])} MXN\n"
         f"Ahorro: {mxn(ah['ahorro_total_mxn'])} MXN ({ah['ahorro_pct']:.1%})\n"
-        f"  por horas extra evitadas: {mxn(ah['costo_extra_evitado_mxn'])} MXN\n"
-        f"  por gente de más evitada: {mxn(ah['costo_sobrestaffing_evitado_mxn'])} MXN\n"
+        + "".join(f"  {c}: {mxn(v)} MXN\n" for c, v in puente_ahorro(ah)) +
         f"Captura del ahorro máximo teórico: {br.get('pct_del_techo_capturado', 0):.0%}\n")
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
     d1, d2, _ = st.columns([1, 1, 2])
@@ -1070,8 +1086,12 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
                        icon=":material/download:", width="stretch")
     with st.expander("De dónde sale el ahorro"):
         meta = ("<b>Cumple la meta</b> de 8%" if ah["cumple_minimo_8pct"] else "<b>Debajo de la meta</b> de 8%")
-        aviso(f"{meta}: ahorra {ah['ahorro_pct']:.1%} esta semana — {mxn(ah['costo_extra_evitado_mxn'])} por horas "
-              f"extra evitadas y {mxn(ah['costo_sobrestaffing_evitado_mxn'])} por gente de más evitada.",
+        partidas = puente_ahorro(ah)
+        texto = ""
+        for i, (c, v) in enumerate(partidas):
+            signo = ("− " if v < 0 else "") if i == 0 else (" − " if v < 0 else " + ")
+            texto += f"{signo}{mxn(abs(v))} {c[0].lower() + c[1:]}"
+        aviso(f"{meta}: ahorra {mxn(ah['ahorro_total_mxn'])} ({ah['ahorro_pct']:.1%}) esta semana = {texto}.",
               "bien" if ah["cumple_minimo_8pct"] else "ojo")
         base_rep = rep["base"]
         filas = pd.DataFrame([
@@ -1222,6 +1242,7 @@ def vista_dia(tienda_id: str, f: date) -> None:
 
     st.markdown("<div class='leyenda' style='margin:0 0 8px'>" + "&nbsp;&nbsp;".join(
         f"<span class='punto' style='background:{ROL_COLOR[r]}'></span>{ROL_ETIQUETA[r]}" for r in ROL_COLOR)
+        + "&nbsp;&nbsp;·&nbsp;&nbsp;10 h = turno extendido; solo cuenta como extra si la persona pasa del tope semanal"
         + "</div>", unsafe_allow_html=True)
 
     # --- 4 columnas, una por turno ---
@@ -1232,7 +1253,8 @@ def vista_dia(tienda_id: str, f: date) -> None:
         gente = sorted(info, key=lambda e: (rol.get(e, ""), nombre.get(e, e)))
         filas = "".join(
             fila(e, f"{int(info[e].hora_pausa)}:00"
-                    + (" · +2 h" if int(info[e].hora_fin) - int(info[e].hora_inicio) > 8 else ""))
+                    + (f" · {int(info[e].hora_fin) - int(info[e].hora_inicio)} h"
+                       if int(info[e].hora_fin) - int(info[e].hora_inicio) > 8 else ""))
             for e in gente
         ) or "<div class='leyenda' style='padding:6px 0'>Nadie en este turno</div>"
         c.markdown(
@@ -1258,6 +1280,35 @@ def vista_dia(tienda_id: str, f: date) -> None:
 
     with st.expander("Cobertura por hora" + (" · falta gente" if faltas_dia else ""), expanded=bool(faltas_dia)):
         grafica_cobertura(rep, t_dia, f, faltas_dia)
+
+
+def _zona_y_correo_admin(tienda_id: str) -> tuple[str, str]:
+    """Zona de la tienda y correo de su admin regional (vacío si no hay)."""
+    try:
+        zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
+    except ValueError:   # clúster que no está en ZONAS (archivos propios de una cuenta)
+        zona = "sin_zona"
+    adm = usuarios_df[(usuarios_df["rol"] == "admin") & (usuarios_df["zona_id"] == zona)]
+    correo = str(adm["email"].iloc[0]) if len(adm) and pd.notna(adm["email"].iloc[0]) else ""
+    return zona, correo
+
+
+def _avisar_deshecho(tienda_id: str, f: date, persona: str) -> None:
+    """Si el cambio deshecho había generado una alerta al admin, le avisa que ya se revirtió."""
+    todas = notificaciones.cargar_notificaciones(DATA_DIR)
+    if todas.empty:
+        return
+    previas = todas[(todas["tipo"] == "turno_calificado") & (todas["tienda_id"].astype(str) == tienda_id)
+                    & (todas["fecha"].astype(str).str[:10] == f.isoformat())
+                    & todas["mensaje"].astype(str).str.contains(f"movió a {persona} a", regex=False)]
+    if previas.empty:
+        return
+    zona, correo_adm = _zona_y_correo_admin(tienda_id)
+    notificaciones.crear_notificacion(
+        DATA_DIR, "zona", zona, "cambio_deshecho", "info",
+        f"Tienda {tienda_id} · {fmt_dia(f)}: el gerente deshizo el cambio de {persona}. "
+        "Ese turno vuelve al horario sugerido; la alerta anterior ya no aplica.",
+        email_destino=correo_adm or None, tienda_id=tienda_id, fecha=f.isoformat())
 
 
 def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausentes, catalogo) -> str | None:
@@ -1304,12 +1355,7 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                 registrar("turno_reasignado", f"{nombre.get(emp, emp)} ({emp}) → {nuevo}, {f.isoformat()}",
                           alcance=("tienda", tienda_id))
                 if calif["calificacion"] in ("No recomendado", "Costoso", "Caro"):
-                    try:
-                        zona = usuarios.zona_de_cluster(tiendas_df.set_index("tienda_id").loc[tienda_id, "cluster_id"])
-                    except ValueError:   # clúster que no está en ZONAS (archivos propios de una cuenta)
-                        zona = "sin_zona"
-                    adm = usuarios_df[(usuarios_df["rol"] == "admin") & (usuarios_df["zona_id"] == zona)]
-                    correo_adm = str(adm["email"].iloc[0]) if len(adm) and pd.notna(adm["email"].iloc[0]) else ""
+                    zona, correo_adm = _zona_y_correo_admin(tienda_id)
                     notificaciones.crear_notificacion(
                         DATA_DIR, "zona", zona, "turno_calificado",
                         "critico" if calif["calificacion"] == "No recomendado" else "advertencia",
@@ -1337,6 +1383,7 @@ def _panel_cambio(rep, tienda_id, clave, f, t_dia, plantilla, nombre, rol, ausen
                 st.session_state.pop("_ultimo_intento", None)
                 registrar("cambio_deshecho", f"{nombre.get(ultimo[0], ultimo[0])} ({ultimo[0]}) · {ultimo[1]}",
                           alcance=("tienda", tienda_id))
+                _avisar_deshecho(tienda_id, ultimo[1], nombre.get(ultimo[0], ultimo[0]))
                 st.session_state.pop(f"calif_{clave}", None)
                 if ediciones:
                     _calificar(rep, tienda_id, clave)
