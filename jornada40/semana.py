@@ -9,7 +9,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from jornada40 import costos_ahorro, demanda_personal, escenario_base, optimizador, precalculado
+from jornada40 import costos_ahorro, demanda_personal, escenario_base, nomina, optimizador, precalculado
 
 
 def anio_regimen(domingo: date) -> int:
@@ -42,6 +42,9 @@ def calcular(tienda_id: str, domingo: date, datos: dict[str, pd.DataFrame], tiem
         techo = optimizador.resolver_techo_teorico(
             tienda_id, anio, plantilla_t, demanda, ausentismo_t,
             tiempo_limite_seg=tiempo_limite_seg, fecha_inicio=domingo)
+    # Tiempo completo cobra su semana aunque se le programen menos horas (ver nomina.py).
+    propuesta = nomina.aplicar_piso(propuesta, plantilla_t, anio)
+    techo = nomina.aplicar_piso(techo, plantilla_t, anio)
     reporte = costos_ahorro.generar_reporte_cfo(tienda_id, base, propuesta, techo, anio)
     reporte.update({"status": propuesta["status"], "propuesta": propuesta, "base": base,
                     "demanda": demanda, "fecha_inicio": domingo, "anio": anio,
