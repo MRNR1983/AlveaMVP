@@ -23,7 +23,7 @@ from datetime import date
 
 import pandas as pd
 
-from jornada40 import reglas
+from jornada40 import nomina, reglas
 
 __all__ = [
     "calcular_ahorro_semanal",
@@ -317,23 +317,14 @@ def calificar_edicion_manual(
     }
 
     def _costo_y_desglose(horario_df: pd.DataFrame) -> tuple[float, dict[str, dict]]:
-        if horario_df.empty:
-            return 0.0, {}
-        horas_semana = (horario_df[horario_df["trabajando"]]
-                         .groupby("empleado_id").size().to_dict())
-        costo_total = 0.0
-        desglose: dict[str, dict] = {}
-        for emp_id, horas in horas_semana.items():
-            vh = valor_hora.get(emp_id, 0.0)
-            ordinaria = min(horas, tope_semanal)
-            resto = max(0.0, horas - tope_semanal)
-            doble = min(resto, tope_doble)
-            triple = min(max(0.0, resto - tope_doble), tope_triple)
-            costo = ordinaria * vh + doble * vh * mult_doble + triple * vh * mult_triple
-            costo_total += costo
-            desglose[emp_id] = {"horas": horas, "ordinaria": ordinaria,
-                                 "doble": doble, "triple": triple, "costo_mxn": costo}
-        return costo_total, desglose
+        # Mismo pago que el resto de la app (nomina.py): tiempo completo cobra su
+        # semana aunque se le quiten horas, así que mandar a alguien a descansar no "ahorra".
+        horas_semana = ({} if horario_df.empty else
+                        horario_df[horario_df["trabajando"]].groupby("empleado_id").size().to_dict())
+        pagos = nomina.costo_por_empleado(horas_semana, plantilla_tienda_df, anio)
+        desglose = {e: {"horas": p["horas"], "ordinaria": p["ordinaria_trabajada"], "doble": p["doble"],
+                        "triple": p["triple"], "costo_mxn": p["costo_mxn"]} for e, p in pagos.items()}
+        return sum(p["costo_mxn"] for p in pagos.values()), desglose
 
     rol_de = dict(zip(plantilla_tienda_df["empleado_id"], plantilla_tienda_df["rol"])) \
         if "rol" in plantilla_tienda_df.columns else {}
