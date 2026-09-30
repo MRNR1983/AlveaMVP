@@ -125,3 +125,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:16:23,Man001,manager,tienda,T001,turno_calificado,Neutral (costo +$0)
 2026-09-30T13:19:13,Man001,manager,tienda,T001,cambio_deshecho,Fernanda Núñez (E00007) · 2026-09-30
 2026-09-30T13:20:49,Man001,manager,tienda,T001,sesion_cerrada,
+2026-09-30T13:21:27,ADMIN-Z1,admin,zona,Z1,sesion_iniciada,
+2026-09-30T13:21:28,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Resumen
