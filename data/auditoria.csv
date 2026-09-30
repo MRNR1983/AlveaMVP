@@ -131,3 +131,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-09-30T13:22:33,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Horario
 2026-09-30T13:22:43,ADMIN-Z1,admin,zona,Z1,pagina_visitada,Usuarios
 2026-09-30T13:24:54,ADMIN-Z1,admin,zona,Z1,sesion_cerrada,
+2026-09-30T17:20:03,SADMIN,super_admin,red,,sesion_iniciada,
+2026-09-30T17:20:03,SADMIN,super_admin,red,,pagina_visitada,Resumen
