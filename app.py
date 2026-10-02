@@ -14,6 +14,7 @@ Correr local:  streamlit run app.py   (ver README.md)
 """
 from __future__ import annotations
 
+import math
 import re
 
 from datetime import date, datetime, timedelta
@@ -53,7 +54,7 @@ TIEMPO_LIMITE_SEG = 10.0
 # la llave de la caché, así un despliegue nuevo nunca sirve horarios calculados con el
 # modelo anterior (pasó el 24-sep-2026: la caché de Streamlit Cloud sobrevivió al deploy).
 VERSION_MODELO = "2026-09-25-determinista"
-VERSION_COSTOS = "2026-09-30-piso-salarial"   # cambia el costo, no el horario: los precalculados siguen sirviendo
+VERSION_COSTOS = "2026-10-01-cobertura-total"   # cambia el costo, no el horario: los precalculados siguen sirviendo
 _asegurar_modulos_al_dia(VERSION_MODELO)
 archivos.usar_espacio(None)   # cada corrida arranca en la demo compartida
 ZONA_HORARIA = ZoneInfo("America/Mexico_City")
@@ -107,6 +108,11 @@ def mxn(v: float) -> str:
     return f"${v:,.0f}" if v >= 0 else f"−${-v:,.0f}"
 
 
+def pct(v: float) -> str:
+    """Porcentaje truncado a un decimal: 7.97 % se ve 7.9 %, nunca "8.0 %" debajo de la meta."""
+    return f"{math.floor(v * 1000) / 10:.1f}%"
+
+
 def puente_ahorro(ah: dict) -> list[tuple[str, float]]:
     """Partidas del ahorro que suman EXACTO el ahorro total.
 
@@ -120,7 +126,7 @@ def puente_ahorro(ah: dict) -> list[tuple[str, float]]:
     partidas = [("Horas extra evitadas", extra),
                 ("Otros ajustes (valor hora por persona y redondeos)", ah["ahorro_total_mxn"] - extra + penal)]
     if penal:
-        partidas.append(("Penalización por pico sin cubrir", -penal))
+        partidas.append(("Penalización por demanda sin cubrir", -penal))
     return partidas
 
 
@@ -972,40 +978,53 @@ def costo_por_persona(rep: dict, turnos: pd.DataFrame) -> dict:
 
 def resumen_diario(rep: dict, turnos: pd.DataFrame) -> pd.DataFrame:
     """Por día: personas, costo con Alvea, costo con el rol fijo de hoy, ahorro y horas pico sin
-    cubrir. Los costos semanales se reparten por día según las horas trabajadas cada día, así
-    que la suma de los 7 días cuadra exacto con el total de la semana."""
+    cubrir. El sueldo fijo de la semana se reparte parejo en los 7 días (se paga igual en los dos
+    horarios); las horas extra y la penalización por demanda sin cubrir caen en el día en que
+    ocurren. Así un día no "pierde" dinero solo por tener más gente, y la suma de los 7 días cuadra
+    exacto con el ahorro de la semana."""
     semana = rep["fecha_inicio"]
     dias = [semana + timedelta(days=i) for i in range(7)]
-    # Alvea
-    cp = costo_por_persona(rep, turnos)
+
+    def repartir(total: float, pesos: dict) -> dict:
+        s = sum(pesos.get(d, 0.0) for d in dias)
+        return {d: (total * pesos.get(d, 0.0) / s if s else total / 7) for d in dias}
+
+    # Alvea: sueldo parejo; la extra de cada persona en sus días de más de 8 h (o en sus días trabajados)
+    pagos = nomina.costo_por_empleado(nomina.horas_de_turnos(turnos), rep["plantilla"], rep["anio"])
     t = turnos.assign(h=turnos["hora_fin"] - turnos["hora_inicio"])
-    h_sem = t.groupby("empleado_id")["h"].transform("sum")
-    t["costo"] = t["empleado_id"].map(cp) * t["h"] / h_sem
-    alvea = t.groupby("fecha")["costo"].sum()
-    sin_turnos = sum(v for e, v in cp.items() if e not in set(t["empleado_id"]))
-    alvea = alvea.reindex(dias, fill_value=0.0) + sin_turnos / 7
+    alvea = {d: sum(p["costo_ordinario_mxn"] for p in pagos.values()) / 7 for d in dias}
+    for e, g in t.groupby("empleado_id"):
+        ext = pagos.get(e, {}).get("costo_extra_mxn", 0.0)
+        if ext:
+            largos = {r.fecha: max(0, r.h - 8) for r in g.itertuples(index=False)}
+            pesos = largos if sum(largos.values()) else {r.fecha: r.h for r in g.itertuples(index=False)}
+            for d, v in repartir(ext, pesos).items():
+                alvea[d] += v
     personas = t.groupby("fecha")["empleado_id"].nunique()
-    # Rol fijo (base)
+    # Rol fijo: sueldo parejo; su extra en el día en que se pagó (doble ×2, triple ×3)
     base = rep["base"]
-    cu = base["cuadrillas"]
-    cu = cu[cu["turno"] != "descanso"].assign(h=lambda x: x["hora_fin"] - x["hora_inicio"])
-    cu["fecha"] = pd.to_datetime(cu["fecha"]).dt.date
     rh = base["resultado_horas"].copy()
     rh["fecha"] = pd.to_datetime(rh["fecha"]).dt.date
-    h_base = cu.groupby("fecha")["h"].sum().add(
-        rh.groupby("fecha")[["horas_extra_doble", "horas_extra_triple"]].sum().sum(axis=1), fill_value=0)
-    base_dia = h_base / h_base.sum() * rep["ahorro_semanal"]["costo_base_mxn"] if h_base.sum() else h_base
+    peso_ext = (rh["horas_extra_doble"] * 2 + rh["horas_extra_triple"] * 3).groupby(rh["fecha"]).sum().to_dict()
+    costo_base = rep["ahorro_semanal"]["costo_base_mxn"]
+    ext_base = float(base.get("costo_extra_mxn", 0.0))
+    base_ext_dia = repartir(ext_base, peso_ext)
+    base_dia = {d: (costo_base - ext_base) / 7 + base_ext_dia[d] for d in dias}
+    # Penalización por demanda sin cubrir: en los días en que Alvea la deja sin cubrir
+    penal = rep["ahorro_semanal"].get("penalizacion_subdotacion_no_cubierta_mxn", 0.0) or 0.0
+    pen_dia = repartir(penal, rep["propuesta"].get("subdotacion_por_dia") or {})
     faltas = faltantes_pico(rep, turnos)
     filas = []
     for d in dias:
-        a, b = float(alvea.get(d, 0.0)), float(base_dia.get(d, 0.0))
+        a, b = alvea[d] + pen_dia[d], base_dia[d]
         filas.append({"fecha": d, "personas": int(personas.get(d, 0)), "alvea": a, "base": b, "ahorro": b - a,
                       "pico_sin": sum(sum(v.values()) for k, v in faltas.items() if k[0] == d)})
     return pd.DataFrame(filas)
 
 
 def milesk(v: float) -> str:
-    return f"${v/1000:,.1f}k" if abs(v) >= 1000 else f"${v:,.0f}"
+    signo = "−" if v < 0 else ""
+    return f"{signo}${abs(v)/1000:,.1f}k" if abs(v) >= 1000 else f"{signo}${abs(v):,.0f}"
 
 
 def faltantes_pico(rep: dict, turnos: pd.DataFrame) -> dict:
@@ -1043,12 +1062,14 @@ def tiles_semana(rep: dict, turnos: pd.DataFrame, rd: pd.DataFrame) -> None:
     """3 cifras: cuánto ahorras (con las dos bases), si el pico está cubierto y las horas extra."""
     base, alvea = rd["base"].sum(), rd["alvea"].sum()
     ahorro = base - alvea
+    pen = rep["ahorro_semanal"].get("penalizacion_subdotacion_no_cubierta_mxn", 0.0) or 0.0
     extra = horas_extra_vigentes(rep, turnos)
     b = rep["base"]
     extra_base = int(b.get("horas_extra_doble_totales", 0) + b.get("horas_extra_triple_totales", 0))
     tiles([
         ("Ahorro de la semana", mxn(ahorro),
-         (f"{ahorro / base:.1%} · rol fijo {mxn(base)} → Alvea {mxn(alvea)}" if base else ""), "", True),
+         (f"{pct(ahorro / base)} · rol fijo {mxn(base)} → Alvea {mxn(alvea - pen)}"
+          + (f" · −{mxn(pen)} por demanda sin cubrir" if pen >= 1 else "") if base else ""), "", True),
         tile_pico(int(rd["pico_sin"].sum())),
         ("Horas extra", f"{extra:,}", f"con el rol fijo serían {extra_base:,}", "ojo" if extra else "bien"),
     ])
@@ -1067,9 +1088,11 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
         f"Alvea — Tienda {tienda_id}\nSemana {fmt_rango_semana(semana)} · jornada {horas_regimen(semana)} h "
         f"({anio_regimen(semana)})\n\n{rep['resumen_ejecutivo']}\n\n"
         f"Costo rol fijo de hoy: {mxn(ah['costo_base_mxn'])} MXN\nCosto con Alvea: {mxn(ah['costo_propuesta_mxn'])} MXN\n"
-        f"Ahorro: {mxn(ah['ahorro_total_mxn'])} MXN ({ah['ahorro_pct']:.1%})\n"
+        f"Ahorro: {mxn(ah['ahorro_total_mxn'])} MXN ({pct(ah['ahorro_pct'])})\n"
         + "".join(f"  {c}: {mxn(v)} MXN\n" for c, v in puente_ahorro(ah)) +
         f"Capacidad liberada (sueldo pagado sin programar): {rep['propuesta'].get('horas_capacidad_liberada') or 0:,.0f} h\n"
+        f"Demanda sin cubrir (h): pico {rep['propuesta'].get('horas_subdotacion_pico') or 0:,} · fuera de pico "
+        f"{rep['propuesta'].get('horas_subdotacion_fuera_pico') or 0:,} (rol fijo: {rep['base'].get('horas_subdotacion_total') or 0:,})\n"
         f"Captura del ahorro máximo teórico: {br.get('pct_del_techo_capturado', 0):.0%}\n")
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
     d1, d2, _ = st.columns([1, 1, 2])
@@ -1086,8 +1109,16 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
         for i, (c, v) in enumerate(partidas):
             signo = ("− " if v < 0 else "") if i == 0 else (" − " if v < 0 else " + ")
             texto += f"{signo}{mxn(abs(v))} {c[0].lower() + c[1:]}"
-        aviso(f"{meta}: ahorra {mxn(ah['ahorro_total_mxn'])} ({ah['ahorro_pct']:.1%}) esta semana = {texto}.",
+        aviso(f"{meta}: ahorra {mxn(ah['ahorro_total_mxn'])} ({pct(ah['ahorro_pct'])}) esta semana = {texto}.",
               "bien" if ah["cumple_minimo_8pct"] else "ojo")
+        sin_cubrir = ah.get("penalizacion_subdotacion_no_cubierta_mxn", 0.0) or 0.0
+        if sin_cubrir >= 1:
+            pr = rep["propuesta"]
+            aviso(f"<b>Demanda sin cubrir: {pr.get('horas_subdotacion_total') or 0:,} h</b> con Alvea "
+                  f"(pico {pr.get('horas_subdotacion_pico') or 0:,} · fuera de pico {pr.get('horas_subdotacion_fuera_pico') or 0:,}) "
+                  f"contra {rep['base'].get('horas_subdotacion_total') or 0:,} h con el rol fijo. "
+                  f"Esas horas no cuentan como ahorro: se restan {mxn(sin_cubrir)} (3 veces el valor hora, "
+                  "convención del PMV).", "ojo")
         cap = rep["propuesta"].get("horas_capacidad_liberada") or 0
         if cap:
             aviso(f"<b>Capacidad liberada: {cap:,.0f} h.</b> Horas de sueldo que se pagan igual pero que "
@@ -1104,6 +1135,12 @@ def detalle_semana(rep: dict, tienda_id: str, semana: date, turnos: pd.DataFrame
             {"Concepto": "Horas de gente de más",
              "Rol fijo de hoy": round(costos_ahorro._normalizar(base_rep)["horas_sobrestaffing"]),
              "Con Alvea": rep["propuesta"].get("horas_sobrestaffing") or 0},
+            {"Concepto": "Demanda sin cubrir en pico (h)",
+             "Rol fijo de hoy": base_rep.get("horas_subdotacion_pico") or 0,
+             "Con Alvea": rep["propuesta"].get("horas_subdotacion_pico") or 0},
+            {"Concepto": "Demanda sin cubrir fuera de pico (h)",
+             "Rol fijo de hoy": base_rep.get("horas_subdotacion_fuera_pico") or 0,
+             "Con Alvea": rep["propuesta"].get("horas_subdotacion_fuera_pico") or 0},
             {"Concepto": "Costo de la semana (MXN)", "Rol fijo de hoy": round(ah["costo_base_mxn"]),
              "Con Alvea": round(ah["costo_propuesta_mxn"])},
         ])
@@ -1437,7 +1474,7 @@ def pagina_resumen() -> None:
     rk = cons["ranking_tiendas"]
     n_ok = int(rk["cumple_minimo_8pct"].sum())
     tiles([
-        ("Ahorro de la semana", mxn(cons["ahorro_total_red_mxn"]), f"{cons['ahorro_pct_red']:.1%} del costo actual",
+        ("Ahorro de la semana", mxn(cons["ahorro_total_red_mxn"]), f"{pct(cons['ahorro_pct_red'])} del costo actual",
          "", True),
         ("Tiendas en meta (≥ 8%)", f"{n_ok} de {len(rk)}", "", "bien" if n_ok == len(rk) else "ojo"),
         ("Tiendas sin horario legal", f"{len(cons['tiendas_infeasible'])}", "",
@@ -1462,9 +1499,16 @@ def pagina_resumen() -> None:
     st.altair_chart((barras + meta).properties(height=max(160, 28 * len(rk))).configure_view(strokeWidth=0),
                     width="stretch")
     cap_red = sum((r["propuesta"].get("horas_capacidad_liberada") or 0) for r in resultados.values())
+    sin_p = sum((r["propuesta"].get("horas_subdotacion_total") or 0) for r in resultados.values())
+    sin_b = sum((r["base"].get("horas_subdotacion_total") or 0) for r in resultados.values())
     st.caption("Línea punteada = meta mínima de 8%. El ahorro es dinero que deja de salir (sobre todo horas "
                f"extra); el sueldo de tiempo completo se paga igual. Capacidad liberada en estas tiendas: "
-               f"{cap_red:,.0f} h por semana, holgura para absorber la baja de jornada sin contratar.")
+               f"{cap_red:,.0f} h por semana, holgura para absorber la baja de jornada sin contratar. "
+               f"Demanda sin cubrir: {sin_p:,} h con Alvea contra {sin_b:,} h con el rol fijo; la diferencia "
+               "se resta del ahorro.")
+    if getattr(precalculado, "ultimo_error", None) and auth_real["rol"] == "super_admin":
+        aviso("<b>Algunos horarios guardados no se pudieron abrir</b> y se están recalculando en vivo "
+              f"(más lento). Detalle técnico: {precalculado.ultimo_error}", "ojo")
     with st.expander("Ver tabla"):
         st.dataframe(rk[["tienda_id", "cluster_id", "formato", "ahorro_mxn", "ahorro_pct", "Estado"]],
                      hide_index=True, width="stretch",
@@ -1713,8 +1757,8 @@ def tabla_antes_despues(clave: str) -> None:
     st.markdown("<div class='seccion'>Antes y después</div>", unsafe_allow_html=True)
     tabla = pd.DataFrame([{
         "Tienda": f["tienda"], "Semana": fmt_rango_semana(f["semana"]),
-        "Antes": f"{mxn(f['antes']['ahorro'])} ({f['antes']['pct']:.1%})" if f["antes"] else "—",
-        "Después": f"{mxn(f['despues']['ahorro'])} ({f['despues']['pct']:.1%})",
+        "Antes": f"{mxn(f['antes']['ahorro'])} ({pct(f['antes']['pct'])})" if f["antes"] else "—",
+        "Después": f"{mxn(f['despues']['ahorro'])} ({pct(f['despues']['pct'])})",
         "Cambio": mxn(f["despues"]["ahorro"] - f["antes"]["ahorro"]).replace("$-", "−$") if f["antes"] else "nuevo",
         "Hora pico": "Cubierta" if f["despues"]["pico"] == 0 else f"Faltan {f['despues']['pico']} h",
         "Meta 8%": "Sí" if f["despues"]["pct"] >= 0.08 else "No",
