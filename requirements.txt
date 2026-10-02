@@ -2,3 +2,4 @@ pandas==3.0.2
 numpy==2.4.4
 streamlit==1.64.0
 ortools==9.15.6755
+pyarrow==25.0.1   # abre los horarios precalculados (pickle con DataFrames)
