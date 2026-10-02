@@ -56,7 +56,11 @@ def _normalizar(resultado: dict) -> dict:
         "horas_ordinarias": resultado.get("horas_ordinarias_totales", resultado.get("horas_ordinarias", 0.0)) or 0.0,
         "horas_extra_doble": resultado.get("horas_extra_doble_totales", resultado.get("horas_extra_doble", 0.0)) or 0.0,
         "horas_extra_triple": resultado.get("horas_extra_triple_totales", resultado.get("horas_extra_triple", 0.0)) or 0.0,
-        "horas_subdotacion": resultado.get("horas_subdotacion_totales", resultado.get("horas_subdotacion_pico", 0.0)) or 0.0,
+        # Mismo alcance en ambos lados: todas las horas (pico y fuera de pico), ver cobertura.py.
+        "horas_subdotacion": (resultado.get("horas_subdotacion_total")
+                              if resultado.get("horas_subdotacion_total") is not None
+                              else resultado.get("horas_subdotacion_totales",
+                                                 resultado.get("horas_subdotacion_pico", 0.0))) or 0.0,
         "horas_sobrestaffing": (resultado.get("horas_sobrestaffing") if resultado.get("horas_sobrestaffing") is not None
                                 else _sobrestaffing_base(resultado)),
         "costo_total_mxn": resultado.get("costo_total_mxn", 0.0) or 0.0,
