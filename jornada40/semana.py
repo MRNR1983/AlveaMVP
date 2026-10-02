@@ -9,7 +9,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from jornada40 import costos_ahorro, demanda_personal, escenario_base, nomina, optimizador, precalculado
+from jornada40 import cobertura, costos_ahorro, demanda_personal, escenario_base, nomina, optimizador, precalculado
 
 
 def anio_regimen(domingo: date) -> int:
@@ -45,6 +45,12 @@ def calcular(tienda_id: str, domingo: date, datos: dict[str, pd.DataFrame], tiem
     # Tiempo completo cobra su semana aunque se le programen menos horas (ver nomina.py).
     propuesta = nomina.aplicar_piso(propuesta, plantilla_t, anio)
     techo = nomina.aplicar_piso(techo, plantilla_t, anio)
+    # Demanda sin cubrir medida igual en los tres horarios, en pico y fuera de pico (ver cobertura.py).
+    base = cobertura.anotar(base, cobertura.deficit_base(base, demanda))
+    if propuesta.get("turnos_df") is not None:
+        propuesta = cobertura.anotar(propuesta, cobertura.deficit_propuesta(propuesta["turnos_df"], demanda, plantilla_t))
+    if techo.get("turnos_df") is not None:
+        techo = cobertura.anotar(techo, cobertura.deficit_propuesta(techo["turnos_df"], demanda, plantilla_t))
     reporte = costos_ahorro.generar_reporte_cfo(tienda_id, base, propuesta, techo, anio)
     reporte.update({"status": propuesta["status"], "propuesta": propuesta, "base": base,
                     "demanda": demanda, "fecha_inicio": domingo, "anio": anio,
