@@ -136,7 +136,8 @@ def aplicar_ausentismo_y_demanda_real(
 
     Donde la gente presente < demanda requerida, extiende turnos de
     empleados disponibles ese día (presentes, sin llegar a su tope diario
-    de 12h) con horas extra: primero al doble hasta el tope semanal
+    de 12h y sin pasar del máximo de días con extra a la semana, art. 66)
+    con horas extra: primero al doble hasta el tope semanal
     vigente, luego al triple hasta el tope adicional; si aun así no
     alcanza, registra el faltante como subdotación (no fuerza cobertura
     imposible).
@@ -149,6 +150,8 @@ def aplicar_ausentismo_y_demanda_real(
     tope_doble = reglas.regla_vigente("extra_tope_doble_semanal_horas", fref)
     tope_triple = reglas.regla_vigente("extra_tope_triple_semanal_horas", fref)
     tope_dia = reglas.regla_vigente("jornada_diaria_total_max_horas", fref)
+    # Máximo de días a la semana con tiempo extra por persona (art. 66; reglas.py).
+    dias_extra_max = int(reglas.regla_vigente("extra_tope_doble_dias_max_semana", fref))
 
     ausentes = set(zip(ausentismo_df.loc[ausentismo_df["ausente"], "empleado_id"],
                         ausentismo_df.loc[ausentismo_df["ausente"], "fecha"]))
@@ -160,6 +163,7 @@ def aplicar_ausentismo_y_demanda_real(
     horas_dia_acum: dict[tuple, float] = {}
     extra_doble_acum: dict[str, float] = {}
     extra_triple_acum: dict[str, float] = {}
+    dias_con_extra: dict[str, set] = {}
     presentes_ese_dia: dict[tuple, list[str]] = {}  # (tienda_id, rol, fecha) -> [empleado_id]
 
     for row in trabaja.itertuples(index=False):
@@ -191,6 +195,9 @@ def aplicar_ausentismo_y_demanda_real(
             emp = candidatos.pop(0)
             if horas_dia_acum.get((emp, row.fecha), 0.0) >= tope_dia:
                 continue
+            dias_emp = dias_con_extra.setdefault(emp, set())
+            if row.fecha not in dias_emp and len(dias_emp) >= dias_extra_max:
+                continue  # ya hizo extra en el máximo de días permitido esta semana
             if extra_doble_acum[emp] < tope_doble:
                 extra_doble_acum[emp] += 1
                 n_doble += 1
@@ -200,6 +207,7 @@ def aplicar_ausentismo_y_demanda_real(
             else:
                 continue  # este empleado ya agotó ambos topes semanales
             horas_dia_acum[(emp, row.fecha)] = horas_dia_acum.get((emp, row.fecha), 0.0) + 1
+            dias_emp.add(row.fecha)
             deficit -= 1
 
         resultado.append({
