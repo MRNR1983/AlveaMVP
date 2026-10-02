@@ -34,7 +34,8 @@ def costo_por_empleado(horas: dict[str, float], plantilla: pd.DataFrame, anio: i
     """Pago semanal de CADA persona de la plantilla (aunque no tenga turnos).
 
     ``horas``: horas trabajadas en la semana por empleado_id.
-    Regresa {empleado_id: {costo_mxn, horas, ordinaria_trabajada, ordinaria_pagada, doble, triple}}.
+    Regresa {empleado_id: {costo_mxn, costo_ordinario_mxn, costo_extra_mxn, horas,
+    ordinaria_trabajada, ordinaria_pagada, doble, triple}}.
     """
     fref = date(anio, 1, 1)
     tope = float(reglas.regla_vigente("jornada_ordinaria_semanal_horas", fref))
@@ -51,8 +52,9 @@ def costo_por_empleado(horas: dict[str, float], plantilla: pd.DataFrame, anio: i
         dbl = min(max(0.0, h - tope), t_dbl)
         tpl = max(0.0, h - tope - t_dbl)
         o_pag = tope if paga_semana_completa(contrato.get(e)) else o
-        out[e] = {"costo_mxn": o_pag * vh + dbl * vh * m_dbl + tpl * vh * m_tpl, "horas": h,
-                  "ordinaria_trabajada": o, "ordinaria_pagada": o_pag, "doble": dbl, "triple": tpl}
+        c_ord, c_ext = o_pag * vh, dbl * vh * m_dbl + tpl * vh * m_tpl
+        out[e] = {"costo_mxn": c_ord + c_ext, "costo_ordinario_mxn": c_ord, "costo_extra_mxn": c_ext,
+                  "horas": h, "ordinaria_trabajada": o, "ordinaria_pagada": o_pag, "doble": dbl, "triple": tpl}
     return out
 
 
