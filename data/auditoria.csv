@@ -161,3 +161,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-10-02T13:22:27,SADMIN,super_admin,red,,sesion_cerrada,
 2026-10-02T13:22:57,Man001,manager,tienda,T001,sesion_iniciada,
 2026-10-02T13:22:57,Man001,manager,tienda,T001,pagina_visitada,Horario
+2026-10-02T13:23:48,Man001,manager,tienda,T001,sesion_iniciada,
+2026-10-02T13:23:48,Man001,manager,tienda,T001,pagina_visitada,Horario
