@@ -11,11 +11,15 @@ esa tienda se recalcula; las demás siguen al instante.
 from __future__ import annotations
 
 import gzip
+import logging
 import pickle
 from datetime import date
 from pathlib import Path
 
 from jornada40 import optimizador
+
+_log = logging.getLogger(__name__)
+ultimo_error: str | None = None   # lo muestra la app si un guardado no se pudo abrir
 
 CARPETA = Path(__file__).resolve().parent.parent / "precalculado"
 
@@ -49,9 +53,12 @@ def cargar(version: str, tienda_id: str, domingo: date, huella: str) -> tuple[di
     ruta = _ruta(version, tienda_id, domingo, huella)
     if not ruta.exists():
         return None
+    global ultimo_error
     try:
         with gzip.open(ruta, "rb") as f:
             d = pickle.load(f)
         return _expandir(d["propuesta"]), _expandir(d["techo"])
-    except Exception:
+    except Exception as e:   # p. ej. falta pyarrow: se recalcula en vivo, pero se avisa
+        ultimo_error = f"{type(e).__name__}: {e}"
+        _log.warning("No se pudo abrir el precalculado %s (%s); se recalcula en vivo.", ruta.name, ultimo_error)
         return None
