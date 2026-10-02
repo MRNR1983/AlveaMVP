@@ -152,3 +152,4 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-10-02T12:58:32,SADMIN,super_admin,red,,pagina_visitada,Resumen
 2026-10-02T13:16:41,SADMIN,super_admin,red,,sesion_iniciada,
 2026-10-02T13:16:41,SADMIN,super_admin,red,,pagina_visitada,Resumen
+2026-10-02T13:17:15,SADMIN,super_admin,red,,pagina_visitada,Datos
