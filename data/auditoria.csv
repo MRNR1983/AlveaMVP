@@ -180,3 +180,4 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-10-02T13:28:47,SADMIN,super_admin,red,,pagina_visitada,Horario
 2026-10-02T13:29:06,SADMIN,super_admin,red,,pagina_visitada,Avisos
 2026-10-02T13:29:14,SADMIN,super_admin,red,,pagina_visitada,Horario
+2026-10-02T13:29:17,SADMIN,super_admin,red,,pagina_visitada,Avisos
