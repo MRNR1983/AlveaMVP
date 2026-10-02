@@ -186,3 +186,5 @@ timestamp,usuario,rol,alcance_tipo,alcance_valor,tipo_evento,detalle
 2026-10-02T13:29:49,SADMIN,super_admin,tienda,T001,turno_reasignado,"Cecilia Romero (E00058) → Cierre, 2026-09-30"
 2026-10-02T13:30:16,SADMIN,super_admin,tienda,T001,turno_calificado,Neutral (costo +$0)
 2026-10-02T13:30:16,SADMIN,super_admin,tienda,T001,turno_reasignado,"Fernanda Núñez (E00007) → Cierre, 2026-09-30"
+2026-10-02T13:30:35,SADMIN,super_admin,tienda,T001,turno_calificado,No recomendado (costo +$0)
+2026-10-02T13:30:35,SADMIN,super_admin,tienda,T001,turno_reasignado,"Luis Guerrero (E00006) → Cierre, 2026-09-30"
