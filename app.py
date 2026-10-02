@@ -287,7 +287,7 @@ CSS = """
 }
 html, body, [class*="css"], .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif; }
 .stApp { background: #fbfbfd; color: var(--ink); }
-[data-testid="stToolbar"], footer, #MainMenu, [data-testid="stDecoration"],
+[data-testid="stToolbarActions"], [data-testid="stMainMenu"], footer, #MainMenu, [data-testid="stDecoration"],
 [data-testid="InputInstructions"] { display: none !important; }
 header[data-testid="stHeader"] { background: transparent; }
 .block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1180px; }
